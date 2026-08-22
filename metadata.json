@@ -1,0 +1,6 @@
+{
+  "name": "SumerAvera Protocol Core Framework",
+  "description": "Homeostatic multi-agent system based on Lotka-Volterra dynamics with core kernel, truth verification engine, adaptive gateway & honeypot, and real-time dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

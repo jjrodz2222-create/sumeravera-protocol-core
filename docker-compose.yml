@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  sumeravera-core-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sumeravera-core-node
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # HTTP API / Management Console
+      - "8080:8080"   # WebSocket Ingress (/ws/ingress)
+    environment:
+      - NODE_ENV=production
+      - PROTOCOL_VERSION=2.5.0
+      - ENABLE_HONEYPOT_DIVERSION=true
+      - STATE_LEDGER_ENFORCE_INVARIANTS=true
+    volumes:
+      - ledger-data:/app/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+
+volumes:
+  ledger-data:
+    driver: local

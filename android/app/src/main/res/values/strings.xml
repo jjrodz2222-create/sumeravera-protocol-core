@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PawzConnect</string>
+    <string name="widget_name">PawzConnect Quick Match</string>
+    <string name="widget_description">Local-first Gate 1 pairing widget with zero background network wake.</string>
+</resources>

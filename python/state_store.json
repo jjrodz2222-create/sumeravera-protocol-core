@@ -1,0 +1,1694 @@
+{
+  "E": 1882.9661548675326,
+  "K": 2000.0,
+  "E_floor": 100.0,
+  "H": {
+    "bio": 100.0,
+    "art": 100.0,
+    "spirit": 100.0,
+    "water": 100.0,
+    "energy": 100.0
+  },
+  "time_step": 500,
+  "chain": [
+    {
+      "index": 0,
+      "timestamp": 1785743509.2563424,
+      "action_type": "GENESIS",
+      "agent_id": "SYSTEM_KERNEL",
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "hash": "61ef48e4febdd178239e64dcfe32cbd2daf051f9943eb62d38fac2b963f78058",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1000.0,
+        "H": {
+          "bio": 75.0,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        }
+      },
+      "details": "Genesis Block initialized for SumerAvera Protocol Core Framework."
+    },
+    {
+      "index": 1,
+      "timestamp": 1785762940.9306693,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "61ef48e4febdd178239e64dcfe32cbd2daf051f9943eb62d38fac2b963f78058",
+      "hash": "9611ad5dbc74d4ed66a6dc690f184abc49d8c3b92195fc90472bbfd1156db4ba",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1005.0,
+        "Quintet": {
+          "bio": 77.0,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.0
+      },
+      "details": "Agent agent_bio_1 shifted E by +5.0, dH={'bio': 2}"
+    },
+    {
+      "index": 2,
+      "timestamp": 1785762948.4043555,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "9611ad5dbc74d4ed66a6dc690f184abc49d8c3b92195fc90472bbfd1156db4ba",
+      "hash": "5c819e97db99251a3b19d4090735103e3c3f878e03f053181c7e88d23c41be5a",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1006.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +1.0, dH={'bio': 0.5}"
+    },
+    {
+      "index": 3,
+      "timestamp": 1785763658.397062,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "5c819e97db99251a3b19d4090735103e3c3f878e03f053181c7e88d23c41be5a",
+      "hash": "4c98f97e99dc3eecc96cc243ca5b9773f9fe2a9510559369c11e784245265116",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1016.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +10.0, dH={}"
+    },
+    {
+      "index": 4,
+      "timestamp": 1785763661.6374488,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "4c98f97e99dc3eecc96cc243ca5b9773f9fe2a9510559369c11e784245265116",
+      "hash": "d4c4aa4f944a120c698cfdbfb67a34942e2b0375668dd48ccbe8f93518cd97dd",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1026.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +10.0, dH={}"
+    },
+    {
+      "index": 5,
+      "timestamp": 1785763662.5693772,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "d4c4aa4f944a120c698cfdbfb67a34942e2b0375668dd48ccbe8f93518cd97dd",
+      "hash": "c54c2c82e8d91a690899b4412d6393dccf366e75da0b5a9f274a26558323e711",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1036.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +10.0, dH={}"
+    },
+    {
+      "index": 6,
+      "timestamp": 1785763662.757804,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "c54c2c82e8d91a690899b4412d6393dccf366e75da0b5a9f274a26558323e711",
+      "hash": "63f8aa311afb1a6e6d76b48a9dadad228aba39ef256f9257f74c2a2db494184f",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1046.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +10.0, dH={}"
+    },
+    {
+      "index": 7,
+      "timestamp": 1785764586.0355778,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "63f8aa311afb1a6e6d76b48a9dadad228aba39ef256f9257f74c2a2db494184f",
+      "hash": "ed8d33fbda0ce6408000be27f95397e69c212a24bdb3ae25c481a5c918f4db13",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1047.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +1.0, dH={}"
+    },
+    {
+      "index": 8,
+      "timestamp": 1785946494.855771,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "ed8d33fbda0ce6408000be27f95397e69c212a24bdb3ae25c481a5c918f4db13",
+      "hash": "c9001cc4de9ae5a7f3f65fdcd637e82c38692310fa2c2b403f31eecaf7ad3755",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1057.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +10.0, dH={}"
+    },
+    {
+      "index": 9,
+      "timestamp": 1785946497.474756,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "c9001cc4de9ae5a7f3f65fdcd637e82c38692310fa2c2b403f31eecaf7ad3755",
+      "hash": "a2605c14f89e7f253ac626db1dfbe2fce6db7cca87897252fda2c7bc45945090",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1067.0,
+        "Quintet": {
+          "bio": 77.5,
+          "art": 70.0,
+          "spirit": 80.0,
+          "water": 85.0,
+          "energy": 78.0
+        },
+        "H_overall_index": 78.1
+      },
+      "details": "Agent agent_bio_1 shifted E by +10.0, dH={}"
+    },
+    {
+      "index": 10,
+      "timestamp": 1785954457.3053014,
+      "action_type": "STATE_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "a2605c14f89e7f253ac626db1dfbe2fce6db7cca87897252fda2c7bc45945090",
+      "hash": "667775481ddafc597a2dcd81ff582b3ad6ba37ae6b0e6a638331cc182dde4943",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1882.97,
+        "Quintet": {
+          "bio": 100.0,
+          "art": 100.0,
+          "spirit": 100.0,
+          "water": 100.0,
+          "energy": 100.0
+        },
+        "H_overall_index": 100.0,
+        "balancer": {
+          "quintet_variance": 0.0,
+          "quintet_stdev": 0.0,
+          "homeostatic_pressure": 0.0,
+          "coupling_synergy_index": 93.0,
+          "auto_rebalance_active": true,
+          "coupling_factor": 1.0,
+          "dampening_rate": 0.025,
+          "cross_facet_matrix": {
+            "water": {
+              "bio": 0.14,
+              "energy": 0.08
+            },
+            "energy": {
+              "water": 0.12,
+              "bio": 0.06
+            },
+            "bio": {
+              "spirit": 0.1,
+              "water": 0.08
+            },
+            "art": {
+              "spirit": 0.16,
+              "bio": 0.05
+            },
+            "spirit": {
+              "art": 0.12,
+              "spirit": 0.02
+            }
+          }
+        }
+      },
+      "details": "Agent agent_bio_1 shifted E by +0.0, dH={'bio': 0}"
+    },
+    {
+      "index": 11,
+      "timestamp": 1785954462.050807,
+      "action_type": "REBALANCING_SHIFT",
+      "agent_id": "agent_bio_1",
+      "prev_hash": "667775481ddafc597a2dcd81ff582b3ad6ba37ae6b0e6a638331cc182dde4943",
+      "hash": "4f84926f6e1316feeeccd78783470a812628feb35feee035f5265d28841bac0b",
+      "nonce": 0,
+      "state_snapshot": {
+        "E": 1882.97,
+        "Quintet": {
+          "bio": 100.0,
+          "art": 100.0,
+          "spirit": 100.0,
+          "water": 100.0,
+          "energy": 100.0
+        },
+        "H_overall_index": 100.0,
+        "balancer": {
+          "quintet_variance": 0.0,
+          "quintet_stdev": 0.0,
+          "homeostatic_pressure": 0.0,
+          "coupling_synergy_index": 93.0,
+          "auto_rebalance_active": true,
+          "coupling_factor": 1.0,
+          "dampening_rate": 0.025,
+          "cross_facet_matrix": {
+            "water": {
+              "bio": 0.14,
+              "energy": 0.08
+            },
+            "energy": {
+              "water": 0.12,
+              "bio": 0.06
+            },
+            "bio": {
+              "spirit": 0.1,
+              "water": 0.08
+            },
+            "art": {
+              "spirit": 0.16,
+              "bio": 0.05
+            },
+            "spirit": {
+              "art": 0.12,
+              "spirit": 0.02
+            }
+          }
+        }
+      },
+      "details": "[REBALANCING WARNING] Anomaly Index=300/1000. Dampened shift applied: dE=+0.0, dH={'bio': 0.0}"
+    }
+  ],
+  "gateway_stats": {
+    "total_requests": 16,
+    "legitimate_routed": 11,
+    "honeypot_diverted": 5,
+    "threats_by_type": {
+      "SQL_EXPLOIT": 0,
+      "FORGED_SIGNATURE": 0,
+      "UNREGISTERED_AGENT": 0,
+      "RESOURCE_DRAIN_ATTACK": 0,
+      "BOT_REPLAY": 0,
+      "XSS_PAYLOAD": 0,
+      "INVALID_SIGNATURE": 1,
+      "FACET_OUT_OF_BOUNDS": 2
+    }
+  },
+  "honeypot_logs": [
+    {
+      "id": "QRT-1785954465755",
+      "timestamp": 1785954465.755538,
+      "client_ip": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "threat_type": "QUARANTINE_ANOMALY_EXCEEDED",
+      "reason": "STATUS: QUARANTINE (751\u20131000) - High risk Fraud Anomaly Index (1000/1000). Locking step loop, isolating non-truth ingress, and logging loss-prevention metrics.",
+      "anomaly_index": 1000,
+      "action_taken": "ISOLATED_IN_QUARANTINE_ARRAY",
+      "payload_captured": {
+        "header": {
+          "tenant_id": "rogue_tenant_99",
+          "source_node_id": "tampered_node_x",
+          "timestamp": 1785951100,
+          "payload_type": "TELEMETRY",
+          "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "telemetry": {
+          "voltage": 520,
+          "current": 180,
+          "isolation_faults": 3,
+          "claimed_financial_values": 95000
+        },
+        "agent_id": "rogue_bot_99",
+        "dE": -600,
+        "dH": {
+          "bio": -80
+        },
+        "signature": "BAD_SPOOFED_KEY"
+      },
+      "prevented_financial_loss": 95000.0,
+      "synthetic_response_sent": {
+        "status": "ACCEPTED_DECOY",
+        "synthetic_ledger_hash": "00d3a637b58fc51556388c0542d0d41ad12e666728f84fbc85ead52c357fdb45",
+        "simulated_E": 9999.0,
+        "honeypot_trap_flag": true
+      }
+    },
+    {
+      "id": "QRT-1785954454425",
+      "timestamp": 1785954454.4254556,
+      "client_ip": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "threat_type": "QUARANTINE_ANOMALY_EXCEEDED",
+      "reason": "STATUS: STABLE (0\u2013250) - Ingress compliant with schema & cryptographic parameters.",
+      "anomaly_index": 250,
+      "action_taken": "ISOLATED_IN_QUARANTINE_ARRAY",
+      "payload_captured": {
+        "header": {
+          "tenant_id": "tenant_alpha_01",
+          "source_node_id": "node_us_west_01",
+          "timestamp": 1785951100,
+          "payload_type": "TELEMETRY"
+        },
+        "telemetry": {
+          "voltage": 398.5,
+          "current": 42,
+          "isolation_faults": 0,
+          "claimed_financial_values": 120
+        },
+        "agent_id": "agent_bio_1",
+        "dE": 15,
+        "dH": {
+          "bio": 5
+        },
+        "signature": "sumer_secret_bio_9982"
+      },
+      "prevented_financial_loss": 120.0,
+      "synthetic_response_sent": {
+        "status": "ACCEPTED_DECOY",
+        "synthetic_ledger_hash": "c89c7f9faf79533f8f725aef8b0fcdd9e8b995f95862231a949fdcb72062c46c",
+        "simulated_E": 9999.0,
+        "honeypot_trap_flag": true
+      }
+    },
+    {
+      "id": "HP-1785951104195",
+      "timestamp": 1785951104.1954277,
+      "client_ip": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "threat_type": "FACET_OUT_OF_BOUNDS",
+      "reason": "EQUILIBRIUM_VIOLATION: Facet 'water' would exceed boundaries [0, 100]. Predicted = 115.00",
+      "action_taken": "DIVERTED_TO_SYNTHETIC_PLAYGROUND",
+      "payload_captured": {
+        "agent_id": "agent_bio_1",
+        "dE": 20.0,
+        "dH": {
+          "water": 15.0,
+          "bio": 5.0
+        },
+        "secret_key": "sumer_secret_bio_9982",
+        "signature": "cb3a1f257e1e3b308917ce66e5f91274a85e0da4c0fa835f109e5e302c198b75",
+        "natural_intent": "Divert solar grid energy to purify water reservoirs and regenerate biosphere"
+      },
+      "synthetic_response_sent": {
+        "status": "ACCEPTED_DECOY",
+        "synthetic_ledger_hash": "e619627b14fcfe68e723bc16ea2efca7ca7763621a50cbfa619e471611ea52dd",
+        "simulated_E": 9999.0,
+        "honeypot_trap_flag": true
+      }
+    },
+    {
+      "id": "HP-1785950930835",
+      "timestamp": 1785950930.8358738,
+      "client_ip": "192.168.1.100",
+      "user_agent": "IntentIngressClient/2.4",
+      "threat_type": "FACET_OUT_OF_BOUNDS",
+      "reason": "EQUILIBRIUM_VIOLATION: Facet 'water' would exceed boundaries [0, 100]. Predicted = 113.57",
+      "action_taken": "DIVERTED_TO_SYNTHETIC_PLAYGROUND",
+      "payload_captured": {
+        "agent_id": "agent_bio_1",
+        "dE": 20.0,
+        "dH": {
+          "water": 15.0,
+          "bio": 5.0
+        },
+        "secret_key": "sumer_secret_bio_9982",
+        "signature": "cb3a1f257e1e3b308917ce66e5f91274a85e0da4c0fa835f109e5e302c198b75",
+        "natural_intent": "Divert solar grid energy to purify water reservoirs and regenerate biosphere"
+      },
+      "synthetic_response_sent": {
+        "status": "ACCEPTED_DECOY",
+        "synthetic_ledger_hash": "e9ea45e225d4bd629220c7965b70e59e45093b0d51aadb01f8c708899eba9a3e",
+        "simulated_E": 9999.0,
+        "honeypot_trap_flag": true
+      }
+    },
+    {
+      "id": "HP-1785762944842",
+      "timestamp": 1785762944.842163,
+      "client_ip": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "threat_type": "INVALID_SIGNATURE",
+      "reason": "CRYPTO_FAILURE: Invalid cryptographic signature for agent 'agent_bio_1'.",
+      "action_taken": "DIVERTED_TO_SYNTHETIC_PLAYGROUND",
+      "payload_captured": {
+        "agent_id": "agent_bio_1",
+        "signature": "BAD_SPOOFED_KEY",
+        "dE": 5
+      },
+      "synthetic_response_sent": {
+        "status": "ACCEPTED_DECOY",
+        "synthetic_ledger_hash": "b52a2852c862f00f83db6d4030fa3583e21371023d374999b03bf62c52469276",
+        "simulated_E": 9999.0,
+        "honeypot_trap_flag": true
+      }
+    }
+  ],
+  "system_logs": [
+    {
+      "id": "LOG-1785954465756-150",
+      "timestamp": 1785954465.756124,
+      "time_formatted": "18:27:45",
+      "module": "HONEYPOT",
+      "level": "WARN",
+      "message": "Diverted malicious request from 127.0.0.1 into synthetic playground: STATUS: QUARANTINE (751\u20131000) - High risk Fraud Anomaly Index (1000/1000). Locking step loop, isolating non-truth ingress, and logging loss-prevention metrics."
+    },
+    {
+      "id": "LOG-1785954462050-150",
+      "timestamp": 1785954462.0508635,
+      "time_formatted": "18:27:42",
+      "module": "KERNEL",
+      "level": "SUCCESS",
+      "message": "State shift applied by agent agent_bio_1: STATUS: REBALANCING (251\u2013750) - Elevated Fraud Anomaly Index (300/1000). Adjusting agent energy weights and logging warnings."
+    },
+    {
+      "id": "LOG-1785954457305-150",
+      "timestamp": 1785954457.305358,
+      "time_formatted": "18:27:37",
+      "module": "KERNEL",
+      "level": "SUCCESS",
+      "message": "State shift applied by agent agent_bio_1: STATUS: STABLE (0\u2013250) - Ingress compliant with schema & cryptographic parameters."
+    },
+    {
+      "id": "LOG-1785954454426-150",
+      "timestamp": 1785954454.426037,
+      "time_formatted": "18:27:34",
+      "module": "HONEYPOT",
+      "level": "WARN",
+      "message": "Diverted malicious request from 127.0.0.1 into synthetic playground: STATUS: STABLE (0\u2013250) - Ingress compliant with schema & cryptographic parameters."
+    },
+    {
+      "id": "LOG-1785952232902-150",
+      "timestamp": 1785952232.9021084,
+      "time_formatted": "17:50:32",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952230906-150",
+      "timestamp": 1785952230.9060307,
+      "time_formatted": "17:50:30",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952228926-150",
+      "timestamp": 1785952228.92616,
+      "time_formatted": "17:50:28",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952226914-150",
+      "timestamp": 1785952226.9142575,
+      "time_formatted": "17:50:26",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952224896-150",
+      "timestamp": 1785952224.8965278,
+      "time_formatted": "17:50:24",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952222914-150",
+      "timestamp": 1785952222.9145877,
+      "time_formatted": "17:50:22",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952220906-150",
+      "timestamp": 1785952220.9062076,
+      "time_formatted": "17:50:20",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952218895-150",
+      "timestamp": 1785952218.8955894,
+      "time_formatted": "17:50:18",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952216956-150",
+      "timestamp": 1785952216.9565527,
+      "time_formatted": "17:50:16",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952214904-150",
+      "timestamp": 1785952214.904666,
+      "time_formatted": "17:50:14",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952212899-150",
+      "timestamp": 1785952212.8992674,
+      "time_formatted": "17:50:12",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952210992-150",
+      "timestamp": 1785952210.9926877,
+      "time_formatted": "17:50:10",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952208898-150",
+      "timestamp": 1785952208.8988008,
+      "time_formatted": "17:50:08",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952206910-150",
+      "timestamp": 1785952206.9108112,
+      "time_formatted": "17:50:06",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952204913-150",
+      "timestamp": 1785952204.9139054,
+      "time_formatted": "17:50:04",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952202900-150",
+      "timestamp": 1785952202.9004912,
+      "time_formatted": "17:50:02",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952200899-150",
+      "timestamp": 1785952200.8993611,
+      "time_formatted": "17:50:00",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952198970-150",
+      "timestamp": 1785952198.9708455,
+      "time_formatted": "17:49:58",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952196905-150",
+      "timestamp": 1785952196.9058099,
+      "time_formatted": "17:49:56",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952194899-150",
+      "timestamp": 1785952194.8992655,
+      "time_formatted": "17:49:54",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952192917-150",
+      "timestamp": 1785952192.9170465,
+      "time_formatted": "17:49:52",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952190912-150",
+      "timestamp": 1785952190.9126515,
+      "time_formatted": "17:49:50",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952188898-150",
+      "timestamp": 1785952188.8987997,
+      "time_formatted": "17:49:48",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952186931-150",
+      "timestamp": 1785952186.9314678,
+      "time_formatted": "17:49:46",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952184906-150",
+      "timestamp": 1785952184.906957,
+      "time_formatted": "17:49:44",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952182944-150",
+      "timestamp": 1785952182.94419,
+      "time_formatted": "17:49:42",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952180987-150",
+      "timestamp": 1785952180.9874535,
+      "time_formatted": "17:49:40",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952178920-150",
+      "timestamp": 1785952178.9206395,
+      "time_formatted": "17:49:38",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952176910-150",
+      "timestamp": 1785952176.9104269,
+      "time_formatted": "17:49:36",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952174927-150",
+      "timestamp": 1785952174.9275758,
+      "time_formatted": "17:49:34",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952172899-150",
+      "timestamp": 1785952172.8999512,
+      "time_formatted": "17:49:32",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952170905-150",
+      "timestamp": 1785952170.9058475,
+      "time_formatted": "17:49:30",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952168942-150",
+      "timestamp": 1785952168.942356,
+      "time_formatted": "17:49:28",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952166899-150",
+      "timestamp": 1785952166.8997989,
+      "time_formatted": "17:49:26",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952164899-150",
+      "timestamp": 1785952164.8990953,
+      "time_formatted": "17:49:24",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952162935-150",
+      "timestamp": 1785952162.9350681,
+      "time_formatted": "17:49:22",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952160902-150",
+      "timestamp": 1785952160.9021997,
+      "time_formatted": "17:49:20",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952158916-150",
+      "timestamp": 1785952158.9163032,
+      "time_formatted": "17:49:18",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952156965-150",
+      "timestamp": 1785952156.9658077,
+      "time_formatted": "17:49:16",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952154904-150",
+      "timestamp": 1785952154.904667,
+      "time_formatted": "17:49:14",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952152904-150",
+      "timestamp": 1785952152.9049993,
+      "time_formatted": "17:49:12",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952150935-150",
+      "timestamp": 1785952150.9354246,
+      "time_formatted": "17:49:10",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952148903-150",
+      "timestamp": 1785952148.90327,
+      "time_formatted": "17:49:08",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952146917-150",
+      "timestamp": 1785952146.9170632,
+      "time_formatted": "17:49:06",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952144947-150",
+      "timestamp": 1785952144.9471734,
+      "time_formatted": "17:49:04",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952142900-150",
+      "timestamp": 1785952142.9004188,
+      "time_formatted": "17:49:02",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952140915-150",
+      "timestamp": 1785952140.9153955,
+      "time_formatted": "17:49:00",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952138950-150",
+      "timestamp": 1785952138.9502935,
+      "time_formatted": "17:48:58",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952136913-150",
+      "timestamp": 1785952136.9139729,
+      "time_formatted": "17:48:56",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952134909-150",
+      "timestamp": 1785952134.9095268,
+      "time_formatted": "17:48:54",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952132935-150",
+      "timestamp": 1785952132.9353259,
+      "time_formatted": "17:48:52",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952130920-150",
+      "timestamp": 1785952130.9205914,
+      "time_formatted": "17:48:50",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952128899-150",
+      "timestamp": 1785952128.899027,
+      "time_formatted": "17:48:48",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952127268-150",
+      "timestamp": 1785952127.268753,
+      "time_formatted": "17:48:47",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952124903-150",
+      "timestamp": 1785952124.9038453,
+      "time_formatted": "17:48:44",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952122902-150",
+      "timestamp": 1785952122.9027524,
+      "time_formatted": "17:48:42",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952120971-150",
+      "timestamp": 1785952120.971382,
+      "time_formatted": "17:48:40",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952118907-150",
+      "timestamp": 1785952118.9078062,
+      "time_formatted": "17:48:38",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952116902-150",
+      "timestamp": 1785952116.9026856,
+      "time_formatted": "17:48:36",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952114962-150",
+      "timestamp": 1785952114.9624507,
+      "time_formatted": "17:48:34",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952112898-150",
+      "timestamp": 1785952112.8985612,
+      "time_formatted": "17:48:32",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952110895-150",
+      "timestamp": 1785952110.8951104,
+      "time_formatted": "17:48:30",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952108970-150",
+      "timestamp": 1785952108.9704702,
+      "time_formatted": "17:48:28",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952106902-150",
+      "timestamp": 1785952106.9029667,
+      "time_formatted": "17:48:26",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952104901-150",
+      "timestamp": 1785952104.9013846,
+      "time_formatted": "17:48:24",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952102929-150",
+      "timestamp": 1785952102.9298089,
+      "time_formatted": "17:48:22",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952100915-150",
+      "timestamp": 1785952100.9159524,
+      "time_formatted": "17:48:20",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952098901-150",
+      "timestamp": 1785952098.901251,
+      "time_formatted": "17:48:18",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952096936-150",
+      "timestamp": 1785952096.9366627,
+      "time_formatted": "17:48:16",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952094897-150",
+      "timestamp": 1785952094.8970509,
+      "time_formatted": "17:48:14",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952092909-150",
+      "timestamp": 1785952092.9091537,
+      "time_formatted": "17:48:12",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952090924-150",
+      "timestamp": 1785952090.924962,
+      "time_formatted": "17:48:10",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952088910-150",
+      "timestamp": 1785952088.9100077,
+      "time_formatted": "17:48:08",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952086898-150",
+      "timestamp": 1785952086.8988023,
+      "time_formatted": "17:48:06",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952084934-150",
+      "timestamp": 1785952084.9346097,
+      "time_formatted": "17:48:04",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952082900-150",
+      "timestamp": 1785952082.9000998,
+      "time_formatted": "17:48:02",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952080901-150",
+      "timestamp": 1785952080.9018557,
+      "time_formatted": "17:48:00",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952078923-150",
+      "timestamp": 1785952078.9233088,
+      "time_formatted": "17:47:58",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952076908-150",
+      "timestamp": 1785952076.9084923,
+      "time_formatted": "17:47:56",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952074898-150",
+      "timestamp": 1785952074.8985376,
+      "time_formatted": "17:47:54",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952072904-150",
+      "timestamp": 1785952072.9042046,
+      "time_formatted": "17:47:52",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952070899-150",
+      "timestamp": 1785952070.8991482,
+      "time_formatted": "17:47:50",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952068904-150",
+      "timestamp": 1785952068.9048753,
+      "time_formatted": "17:47:48",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952066896-150",
+      "timestamp": 1785952066.8967414,
+      "time_formatted": "17:47:46",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952064897-150",
+      "timestamp": 1785952064.8973515,
+      "time_formatted": "17:47:44",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952062898-150",
+      "timestamp": 1785952062.8987696,
+      "time_formatted": "17:47:42",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952060948-150",
+      "timestamp": 1785952060.948579,
+      "time_formatted": "17:47:40",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952058914-150",
+      "timestamp": 1785952058.9147325,
+      "time_formatted": "17:47:38",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952056898-150",
+      "timestamp": 1785952056.8981724,
+      "time_formatted": "17:47:36",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952054960-150",
+      "timestamp": 1785952054.9603457,
+      "time_formatted": "17:47:34",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952052899-150",
+      "timestamp": 1785952052.8996463,
+      "time_formatted": "17:47:32",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952050907-150",
+      "timestamp": 1785952050.9074042,
+      "time_formatted": "17:47:30",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952048952-150",
+      "timestamp": 1785952048.9521863,
+      "time_formatted": "17:47:28",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952046898-150",
+      "timestamp": 1785952046.898774,
+      "time_formatted": "17:47:26",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952044905-150",
+      "timestamp": 1785952044.9051464,
+      "time_formatted": "17:47:24",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952042950-150",
+      "timestamp": 1785952042.9504766,
+      "time_formatted": "17:47:22",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952040905-150",
+      "timestamp": 1785952040.9052634,
+      "time_formatted": "17:47:20",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952038896-150",
+      "timestamp": 1785952038.8965082,
+      "time_formatted": "17:47:18",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952036925-150",
+      "timestamp": 1785952036.925596,
+      "time_formatted": "17:47:16",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952034910-150",
+      "timestamp": 1785952034.9106221,
+      "time_formatted": "17:47:14",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952032898-150",
+      "timestamp": 1785952032.8988237,
+      "time_formatted": "17:47:12",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952030919-150",
+      "timestamp": 1785952030.9194036,
+      "time_formatted": "17:47:10",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952028893-150",
+      "timestamp": 1785952028.893893,
+      "time_formatted": "17:47:08",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952026893-150",
+      "timestamp": 1785952026.8937323,
+      "time_formatted": "17:47:06",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952024953-150",
+      "timestamp": 1785952024.9530156,
+      "time_formatted": "17:47:04",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952022901-150",
+      "timestamp": 1785952022.901648,
+      "time_formatted": "17:47:02",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952020896-150",
+      "timestamp": 1785952020.896626,
+      "time_formatted": "17:47:00",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952018927-150",
+      "timestamp": 1785952018.9278026,
+      "time_formatted": "17:46:58",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952016895-150",
+      "timestamp": 1785952016.8953586,
+      "time_formatted": "17:46:56",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952014901-150",
+      "timestamp": 1785952014.90184,
+      "time_formatted": "17:46:54",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952012934-150",
+      "timestamp": 1785952012.9342492,
+      "time_formatted": "17:46:52",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952010895-150",
+      "timestamp": 1785952010.8952925,
+      "time_formatted": "17:46:50",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952008894-150",
+      "timestamp": 1785952008.8941061,
+      "time_formatted": "17:46:48",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952006994-150",
+      "timestamp": 1785952006.9946568,
+      "time_formatted": "17:46:46",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952004894-150",
+      "timestamp": 1785952004.894389,
+      "time_formatted": "17:46:44",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952002894-150",
+      "timestamp": 1785952002.894631,
+      "time_formatted": "17:46:42",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785952001361-150",
+      "timestamp": 1785952001.3614736,
+      "time_formatted": "17:46:41",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951998901-150",
+      "timestamp": 1785951998.9012907,
+      "time_formatted": "17:46:38",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951996895-150",
+      "timestamp": 1785951996.895447,
+      "time_formatted": "17:46:36",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951994975-150",
+      "timestamp": 1785951994.9758403,
+      "time_formatted": "17:46:34",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951992893-150",
+      "timestamp": 1785951992.8936741,
+      "time_formatted": "17:46:32",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951990900-150",
+      "timestamp": 1785951990.9007666,
+      "time_formatted": "17:46:30",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951988952-150",
+      "timestamp": 1785951988.9522967,
+      "time_formatted": "17:46:28",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951986907-150",
+      "timestamp": 1785951986.9078937,
+      "time_formatted": "17:46:26",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951984900-150",
+      "timestamp": 1785951984.9003196,
+      "time_formatted": "17:46:24",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951982899-150",
+      "timestamp": 1785951982.899572,
+      "time_formatted": "17:46:22",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951980901-150",
+      "timestamp": 1785951980.9014988,
+      "time_formatted": "17:46:20",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951978906-150",
+      "timestamp": 1785951978.9065287,
+      "time_formatted": "17:46:18",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951976921-150",
+      "timestamp": 1785951976.9212449,
+      "time_formatted": "17:46:16",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951974912-150",
+      "timestamp": 1785951974.912918,
+      "time_formatted": "17:46:14",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951972903-150",
+      "timestamp": 1785951972.9031653,
+      "time_formatted": "17:46:12",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951970922-150",
+      "timestamp": 1785951970.9225502,
+      "time_formatted": "17:46:10",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951968903-150",
+      "timestamp": 1785951968.9037998,
+      "time_formatted": "17:46:08",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951966908-150",
+      "timestamp": 1785951966.908263,
+      "time_formatted": "17:46:06",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951964981-150",
+      "timestamp": 1785951964.9815493,
+      "time_formatted": "17:46:04",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951962901-150",
+      "timestamp": 1785951962.901849,
+      "time_formatted": "17:46:02",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951960897-150",
+      "timestamp": 1785951960.897376,
+      "time_formatted": "17:46:00",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951958930-150",
+      "timestamp": 1785951958.9304652,
+      "time_formatted": "17:45:58",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951956901-150",
+      "timestamp": 1785951956.9019134,
+      "time_formatted": "17:45:56",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951954894-150",
+      "timestamp": 1785951954.894484,
+      "time_formatted": "17:45:54",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951952956-150",
+      "timestamp": 1785951952.9568264,
+      "time_formatted": "17:45:52",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951950897-150",
+      "timestamp": 1785951950.8977437,
+      "time_formatted": "17:45:50",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951948902-150",
+      "timestamp": 1785951948.9022434,
+      "time_formatted": "17:45:48",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951946936-150",
+      "timestamp": 1785951946.9364316,
+      "time_formatted": "17:45:46",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951944912-150",
+      "timestamp": 1785951944.912014,
+      "time_formatted": "17:45:44",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    },
+    {
+      "id": "LOG-1785951942902-150",
+      "timestamp": 1785951942.9025629,
+      "time_formatted": "17:45:42",
+      "module": "KERNEL",
+      "level": "INFO",
+      "message": "Lotka-Volterra differential step executed (dt=1.0). New E=1883.0, H_avg=100.0"
+    }
+  ]
+}
