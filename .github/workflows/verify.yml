@@ -15,14 +15,13 @@ jobs:
       - name: Step 1 - Checkout repository code
         uses: actions/checkout@v4
 
-      - name: Step 2 - Set up Node.js runtime
+      - name: Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
-          cache: 'npm'
+          node-version: '22'
 
       - name: Step 3 - Install clean dependencies
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Step 4 - Run static linting and syntax validation
         run: npm run lint --if-present
