@@ -575,6 +575,75 @@ app.post(["/api/v1/gate1/insurance-claim", "/api/gate1/insurance-claim"], async 
   }
 });
 
+// 4. Sovereign Trust Settlement & Fraud Interception Endpoint (/api/v1/settlement/process)
+app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, res) => {
+  try {
+    const claimId = req.body.claim_id || `CLAIM-${Date.now()}`;
+    const claimedAmount = Number(req.body.claimed_amount ?? req.body.billed_amount ?? 100000.0);
+    const anomalyIndex = Number(req.body.anomaly_index ?? 890);
+    const extractionRate = Number(req.body.extraction_rate ?? 0.05);
+
+    const isFraudulent = anomalyIndex > 750;
+    
+    if (isFraudulent) {
+      const preservedCapital = claimedAmount;
+      const extractedYield = preservedCapital * extractionRate;
+      const netCarrierSavings = preservedCapital - extractedYield;
+      
+      const payload = {
+        step: 1,
+        timestamp: Date.now() / 1000,
+        claim_id: claimId,
+        status: "GATE_1_INTERCEPT_SAVINGS_LOCKED",
+        preserved_capital: preservedCapital,
+        extracted_yield: extractedYield,
+        net_carrier_savings: netCarrierSavings,
+      };
+
+      const crypto = await import("crypto");
+      const blockHash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+
+      const settlementResult = {
+        status: "FRAUD_INTERCEPTED",
+        claim_id: claimId,
+        anomaly_index: anomalyIndex,
+        preserved_capital: preservedCapital,
+        extraction_fee_5_percent: extractedYield,
+        net_carrier_savings: netCarrierSavings,
+        sovereign_trust_vault_increment: extractedYield,
+        block_hash: blockHash,
+        state_bleed: 0.00,
+        timestamp: Date.now()
+      };
+
+      broadcastIngressEvent({
+        type: "SETTLEMENT_INTERCEPT_EVENT",
+        id: `SETTLE-${Date.now()}`,
+        timestamp: Date.now(),
+        claim_id: claimId,
+        anomaly_index: anomalyIndex,
+        preserved_capital: preservedCapital,
+        extracted_yield: extractedYield,
+        net_carrier_savings: netCarrierSavings,
+        block_hash: blockHash,
+      });
+
+      return res.status(200).json(settlementResult);
+    }
+
+    return res.status(200).json({
+      status: "VERIFIED_PASS_STANDARD_SETTLEMENT",
+      claim_id: claimId,
+      anomaly_index: anomalyIndex,
+      claimed_amount: claimedAmount,
+      state_bleed_score: 0.00,
+      timestamp: Date.now()
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Settlement processing failure", details: err.message });
+  }
+});
+
 // Audit Manifest Download Endpoint (/api/v1/manifest)
 app.get("/api/v1/manifest", async (req, res) => {
   try {

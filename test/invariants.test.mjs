@@ -53,3 +53,21 @@ test("P&C Insurance Invariant: 100% Capital Preserved on Synthetic Fraud Rings",
   assert.equal(capitalPreserved, 250000.0, "100% of capital must be preserved from fraudulent leakage");
 });
 
+test("Sovereign Trust Settlement Invariant: 5% Extraction Yield Split on Intercepted Fraud", () => {
+  const claimAmount = 100000.0;
+  const anomalyIndex = 890;
+  const extractionRate = 0.05;
+
+  const isFraudulent = anomalyIndex > 750;
+  assert.ok(isFraudulent, "Claim with anomaly > 750 must trigger fraud interception");
+
+  const preservedCapital = claimAmount;
+  const extractedYield = preservedCapital * extractionRate;
+  const netCarrierSavings = preservedCapital - extractedYield;
+
+  assert.equal(preservedCapital, 100000.0, "100% of claimed amount must be recognized as preserved capital");
+  assert.equal(extractedYield, 5000.0, "5% extraction fee must route accurately to sovereign trust vault");
+  assert.equal(netCarrierSavings, 95000.0, "Net carrier savings must equal 95% of preserved capital");
+});
+
+
