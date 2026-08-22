@@ -15,23 +15,31 @@ jobs:
       - name: Step 1 - Checkout repository code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js runtime
+      - name: Step 2 - Set up Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Step 3 - Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Step 3 - Install clean dependencies
+      - name: Step 4 - Install clean dependencies
         run: npm ci || npm install
 
-      - name: Step 4 - Run static linting and syntax validation
+      - name: Step 5 - Run static linting and syntax validation
         run: npm run lint --if-present
 
-      - name: Step 5 - Execute unit and state-ledger invariant test suites
+      - name: Step 6 - Execute unit and state-ledger invariant test suites
         run: npm test --if-present
 
-      - name: Step 6 - Run gateway health check and integration smoke tests
+      - name: Step 7 - Build verification artifacts and server bundle
+        run: npm run build
+
+      - name: Step 8 - Run gateway health check and integration smoke tests
         run: |
-          # Start SumerAvera gateway in background for smoke testing
+          # Start SumerAvera gateway in background from compiled production bundle
           npm start &
           SERVER_PID=$!
           
@@ -57,5 +65,3 @@ jobs:
           echo "Ingress and health check smoke tests verified."
           kill $SERVER_PID 2>/dev/null || true
 
-      - name: Step 7 - Build verification artifacts
-        run: npm run build --if-present
