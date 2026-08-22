@@ -576,36 +576,56 @@ app.post(["/api/v1/gate1/insurance-claim", "/api/gate1/insurance-claim"], async 
 });
 
 // 4. Sovereign Trust Settlement & Fraud Interception Endpoint (/api/v1/settlement/process)
+const processedSettlementNonces = new Set<string>();
+
 app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, res) => {
   try {
     const claimId = req.body.claim_id || `CLAIM-${Date.now()}`;
     const claimedAmount = Number(req.body.claimed_amount ?? req.body.billed_amount ?? 100000.0);
     const anomalyIndex = Number(req.body.anomaly_index ?? 890);
     const extractionRate = Number(req.body.extraction_rate ?? 0.05);
+    const nonce = req.body.nonce || `${claimId}:${claimedAmount}`;
 
-    const isFraudulent = anomalyIndex > 750;
-    
-    if (isFraudulent) {
-      const preservedCapital = claimedAmount;
-      const extractedYield = preservedCapital * extractionRate;
-      const netCarrierSavings = preservedCapital - extractedYield;
+    if (processedSettlementNonces.has(nonce)) {
+      return res.status(409).json({
+        status: "REJECTED_DUPLICATE_CLAIM",
+        error: "ERR_DUPLICATE_CLAIM_NONCE",
+        claim_id: claimId,
+        nonce,
+        state_bleed: 0.00
+      });
+    }
+
+    processedSettlementNonces.add(nonce);
+    const crypto = await import("crypto");
+
+    // Tier 3: Hard Perimeter Intercept
+    if (anomalyIndex > 750) {
+      const preservedCapital = Math.round(claimedAmount * 100) / 100;
+      const extractedYield = Math.round(preservedCapital * extractionRate * 100) / 100;
+      const netCarrierSavings = Math.round((preservedCapital - extractedYield) * 100) / 100;
       
       const payload = {
         step: 1,
         timestamp: Date.now() / 1000,
         claim_id: claimId,
+        nonce,
+        tier: "TIER_3_HARD_INTERCEPT",
         status: "GATE_1_INTERCEPT_SAVINGS_LOCKED",
+        anomaly_index: anomalyIndex,
         preserved_capital: preservedCapital,
         extracted_yield: extractedYield,
         net_carrier_savings: netCarrierSavings,
       };
 
-      const crypto = await import("crypto");
       const blockHash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 
       const settlementResult = {
         status: "FRAUD_INTERCEPTED",
+        disposition: "GATE_1_ISOLATED",
+        tier: 3,
         claim_id: claimId,
+        nonce,
         anomaly_index: anomalyIndex,
         preserved_capital: preservedCapital,
         extraction_fee_5_percent: extractedYield,
@@ -631,9 +651,28 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, 
       return res.status(200).json(settlementResult);
     }
 
+    // Tier 2: Conditional Escrow Review Hold
+    if (anomalyIndex >= 500) {
+      return res.status(200).json({
+        status: "ESCROW_REVIEW_REQUIRED",
+        disposition: "GATE_1_HEURISTIC_ESCROW",
+        tier: 2,
+        claim_id: claimId,
+        nonce,
+        claimed_amount: claimedAmount,
+        anomaly_index: anomalyIndex,
+        state_bleed: 0.00,
+        timestamp: Date.now()
+      });
+    }
+
+    // Tier 1: Straight-Through Pass
     return res.status(200).json({
       status: "VERIFIED_PASS_STANDARD_SETTLEMENT",
+      disposition: "STRAIGHT_THROUGH_PROCESSED",
+      tier: 1,
       claim_id: claimId,
+      nonce,
       anomaly_index: anomalyIndex,
       claimed_amount: claimedAmount,
       state_bleed_score: 0.00,
@@ -641,6 +680,138 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, 
     });
   } catch (err: any) {
     res.status(500).json({ error: "Settlement processing failure", details: err.message });
+  }
+});
+
+// 5. Sovereign Trust Batch Settlement Endpoint (/api/v1/settlement/batch)
+app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res) => {
+  try {
+    const claims = Array.isArray(req.body.claims) ? req.body.claims : [];
+    if (claims.length === 0) {
+      return res.status(400).json({ error: "Batch claims payload array required" });
+    }
+
+    const crypto = await import("crypto");
+    const results: any[] = [];
+    const leafHashes: string[] = [];
+    let totalIntercepted = 0;
+    let totalPreserved = 0;
+    let totalYield = 0;
+    let totalSavings = 0;
+
+    for (const claim of claims) {
+      const claimId = claim.claim_id || `CLAIM-${Date.now()}-${results.length}`;
+      const claimedAmount = Number(claim.claimed_amount ?? claim.billed_amount ?? 0);
+      const anomalyIndex = Number(claim.anomaly_index ?? 0);
+      const extractionRate = Number(claim.extraction_rate ?? 0.05);
+      const nonce = claim.nonce || `${claimId}:${claimedAmount}`;
+
+      if (processedSettlementNonces.has(nonce)) {
+        const dupResult = {
+          status: "REJECTED_DUPLICATE_CLAIM",
+          error: "ERR_DUPLICATE_CLAIM_NONCE",
+          claim_id: claimId,
+          nonce,
+          state_bleed: 0.00
+        };
+        results.push(dupResult);
+        leafHashes.push(crypto.createHash("sha256").update(JSON.stringify(dupResult)).digest("hex"));
+        continue;
+      }
+
+      processedSettlementNonces.add(nonce);
+
+      if (anomalyIndex > 750) {
+        const preservedCapital = Math.round(claimedAmount * 100) / 100;
+        const extractedYield = Math.round(preservedCapital * extractionRate * 100) / 100;
+        const netCarrierSavings = Math.round((preservedCapital - extractedYield) * 100) / 100;
+        
+        const payload = {
+          step: results.length + 1,
+          timestamp: Date.now() / 1000,
+          claim_id: claimId,
+          nonce,
+          tier: "TIER_3_HARD_INTERCEPT",
+          status: "GATE_1_INTERCEPT_SAVINGS_LOCKED",
+          anomaly_index: anomalyIndex,
+          preserved_capital: preservedCapital,
+          extracted_yield: extractedYield,
+          net_carrier_savings: netCarrierSavings,
+        };
+
+        const blockHash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+        totalIntercepted += 1;
+        totalPreserved += preservedCapital;
+        totalYield += extractedYield;
+        totalSavings += netCarrierSavings;
+        leafHashes.push(blockHash);
+
+        results.push({
+          status: "FRAUD_INTERCEPTED",
+          disposition: "GATE_1_ISOLATED",
+          tier: 3,
+          claim_id: claimId,
+          nonce,
+          anomaly_index: anomalyIndex,
+          preserved_capital: preservedCapital,
+          extraction_fee_5_percent: extractedYield,
+          net_carrier_savings: netCarrierSavings,
+          block_hash: blockHash,
+          state_bleed: 0.00
+        });
+      } else if (anomalyIndex >= 500) {
+        const escrowResult = {
+          status: "ESCROW_REVIEW_REQUIRED",
+          disposition: "GATE_1_HEURISTIC_ESCROW",
+          tier: 2,
+          claim_id: claimId,
+          nonce,
+          claimed_amount: claimedAmount,
+          anomaly_index: anomalyIndex,
+          state_bleed: 0.00
+        };
+        results.push(escrowResult);
+        leafHashes.push(crypto.createHash("sha256").update(JSON.stringify(escrowResult)).digest("hex"));
+      } else {
+        const stpResult = {
+          status: "VERIFIED_PASS_STANDARD_SETTLEMENT",
+          disposition: "STRAIGHT_THROUGH_PROCESSED",
+          tier: 1,
+          claim_id: claimId,
+          nonce,
+          claimed_amount: claimedAmount,
+          anomaly_index: anomalyIndex,
+          state_bleed_score: 0.00
+        };
+        results.push(stpResult);
+        leafHashes.push(crypto.createHash("sha256").update(JSON.stringify(stpResult)).digest("hex"));
+      }
+    }
+
+    // Merkle Root calculation
+    let currentLevel = [...leafHashes];
+    while (currentLevel.length > 1) {
+      const nextLevel: string[] = [];
+      for (let i = 0; i < currentLevel.length; i += 2) {
+        const left = currentLevel[i];
+        const right = i + 1 < currentLevel.length ? currentLevel[i + 1] : left;
+        nextLevel.push(crypto.createHash("sha256").update(left + right).digest("hex"));
+      }
+      currentLevel = nextLevel;
+    }
+    const merkleRoot = currentLevel[0] || "0".repeat(64);
+
+    return res.status(200).json({
+      batch_size: claims.length,
+      intercepted_count: totalIntercepted,
+      total_preserved_capital: Math.round(totalPreserved * 100) / 100,
+      total_extracted_yield_5_pct: Math.round(totalYield * 100) / 100,
+      total_net_carrier_savings: Math.round(totalSavings * 100) / 100,
+      merkle_root: merkleRoot,
+      results
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Batch settlement processing failure", details: err.message });
   }
 });
 

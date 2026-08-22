@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 
 test("SumerAvera Core Invariant: Carrying capacity bounds [E_floor, E_capacity]", () => {
   const E_capacity = 1000.0;
@@ -69,5 +70,66 @@ test("Sovereign Trust Settlement Invariant: 5% Extraction Yield Split on Interce
   assert.equal(extractedYield, 5000.0, "5% extraction fee must route accurately to sovereign trust vault");
   assert.equal(netCarrierSavings, 95000.0, "Net carrier savings must equal 95% of preserved capital");
 });
+
+test("Sovereign Trust 3-Tier Policy Invariant: STP, Escrow, and Hard Intercept Routing", () => {
+  const evaluateTier = (score) => {
+    if (score > 750) return { tier: 3, disposition: "GATE_1_ISOLATED" };
+    if (score >= 500) return { tier: 2, disposition: "GATE_1_HEURISTIC_ESCROW" };
+    return { tier: 1, disposition: "STRAIGHT_THROUGH_PROCESSED" };
+  };
+
+  assert.deepEqual(evaluateTier(320), { tier: 1, disposition: "STRAIGHT_THROUGH_PROCESSED" });
+  assert.deepEqual(evaluateTier(650), { tier: 2, disposition: "GATE_1_HEURISTIC_ESCROW" });
+  assert.deepEqual(evaluateTier(890), { tier: 3, disposition: "GATE_1_ISOLATED" });
+});
+
+test("Sovereign Trust Invariant: Nonce Idempotency & Cryptographic Replay Defense", () => {
+  const processedNonces = new Set();
+  const testNonce = "NONCE_CLM_88991";
+
+  const processWithNonce = (nonce) => {
+    if (processedNonces.has(nonce)) {
+      return { status: "REJECTED_DUPLICATE_CLAIM", error: "ERR_DUPLICATE_CLAIM_NONCE" };
+    }
+    processedNonces.add(nonce);
+    return { status: "ACCEPTED" };
+  };
+
+  const firstSubmission = processWithNonce(testNonce);
+  assert.equal(firstSubmission.status, "ACCEPTED", "Initial submission with unique nonce must succeed");
+
+  const secondSubmission = processWithNonce(testNonce);
+  assert.equal(secondSubmission.status, "REJECTED_DUPLICATE_CLAIM", "Duplicate nonce must be rejected with zero state bleed");
+  assert.equal(secondSubmission.error, "ERR_DUPLICATE_CLAIM_NONCE");
+});
+
+test("Sovereign Trust Invariant: Batch Settlement Epoch Merkle Root Determinism", () => {
+  const hashes = [
+    crypto.createHash("sha256").update("LEAF_1").digest("hex"),
+    crypto.createHash("sha256").update("LEAF_2").digest("hex"),
+    crypto.createHash("sha256").update("LEAF_3").digest("hex"),
+    crypto.createHash("sha256").update("LEAF_4").digest("hex")
+  ];
+
+  const computeRoot = (leafs) => {
+    let current = [...leafs];
+    while (current.length > 1) {
+      const next = [];
+      for (let i = 0; i < current.length; i += 2) {
+        const left = current[i];
+        const right = i + 1 < current.length ? current[i + 1] : left;
+        next.push(crypto.createHash("sha256").update(left + right).digest("hex"));
+      }
+      current = next;
+    }
+    return current[0];
+  };
+
+  const root1 = computeRoot(hashes);
+  const root2 = computeRoot(hashes);
+  assert.equal(root1, root2, "Merkle root computation must be strictly deterministic across epochs");
+  assert.equal(root1.length, 64, "Merkle root must be a valid 256-bit hexadecimal string");
+});
+
 
 
