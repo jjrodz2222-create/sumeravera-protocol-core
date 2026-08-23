@@ -20,6 +20,9 @@ export const LiveIngressStream: React.FC<LiveIngressStreamProps> = ({ onStateUpd
   const [lastAuditResponse, setLastAuditResponse] = useState<any>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
 
   // Compute protocol URLs
   const host = typeof window !== "undefined" ? window.location.host : "localhost:3000";
@@ -27,15 +30,32 @@ export const LiveIngressStream: React.FC<LiveIngressStreamProps> = ({ onStateUpd
   const wsUrl = `${protocol}//${host}/ws/ingress`;
   const httpUrl = typeof window !== "undefined" ? `${window.location.protocol}//${host}/api/v1/ingress` : "http://localhost:3000/api/v1/ingress";
 
-  // WebSocket Connection Lifecycle
+  // Jittered Exponential Backoff Algorithm: min(maxBackoff, base * 2^attempt) + random_jitter
+  const calculateBackoffWithJitter = (attempt: number): number => {
+    const baseDelayMs = 1000; // 1s base
+    const maxDelayMs = 30000; // 30s ceiling
+    const exponentialDelay = Math.min(maxDelayMs, baseDelayMs * Math.pow(1.8, attempt));
+    // Full random jitter (0 to 1000ms) prevents synchronized thundering herd spikes
+    const jitter = Math.random() * 1000;
+    return Math.floor(exponentialDelay + jitter);
+  };
+
+  // WebSocket Connection Lifecycle with Jittered Exponential Backoff
   const connectWebSocket = useCallback(() => {
     try {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+
       setWsStatus("CONNECTING");
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
       ws.onopen = () => {
         setWsStatus("CONNECTED");
+        setReconnectNotice(null);
+        reconnectAttemptRef.current = 0; // Reset backoff upon successful handshake
       };
 
       ws.onmessage = (event) => {
@@ -69,10 +89,16 @@ export const LiveIngressStream: React.FC<LiveIngressStreamProps> = ({ onStateUpd
 
       ws.onclose = () => {
         setWsStatus("DISCONNECTED");
-        // Reconnect after 3 seconds
-        setTimeout(() => {
+        const currentAttempt = reconnectAttemptRef.current;
+        const delay = calculateBackoffWithJitter(currentAttempt);
+        reconnectAttemptRef.current += 1;
+        
+        const delaySec = (delay / 1000).toFixed(1);
+        setReconnectNotice(`Reconnecting (attempt #${currentAttempt + 1}) in ${delaySec}s...`);
+
+        reconnectTimerRef.current = setTimeout(() => {
           connectWebSocket();
-        }, 3000);
+        }, delay);
       };
 
       ws.onerror = (err) => {
@@ -88,6 +114,9 @@ export const LiveIngressStream: React.FC<LiveIngressStreamProps> = ({ onStateUpd
   useEffect(() => {
     connectWebSocket();
     return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
       if (socketRef.current) {
         socketRef.current.close();
       }
@@ -246,6 +275,11 @@ export const LiveIngressStream: React.FC<LiveIngressStreamProps> = ({ onStateUpd
 
         {/* Live Active Status Badges */}
         <div className="flex items-center gap-3 shrink-0">
+          {reconnectNotice && wsStatus === "DISCONNECTED" && (
+            <span className="text-[11px] font-mono text-amber-400/90 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-lg animate-pulse hidden sm:inline">
+              {reconnectNotice}
+            </span>
+          )}
           <div
             className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-mono font-bold transition ${
               wsStatus === "CONNECTED"
