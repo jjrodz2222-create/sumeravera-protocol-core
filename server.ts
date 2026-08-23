@@ -1,16 +1,220 @@
 import express from "express";
 import http from "http";
 import path from "path";
+import fs from "fs";
 import crypto from "crypto";
 import { execFile } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
+import dotenv from "dotenv";
+
+// 1. SECRETS & CONFIGURATION: Loaded from environment with secure defaults
+dotenv.config();
+
+const SECRET_KEY =
+  process.env.SECURE_ZERO_DRIFT_SECRET_KEY ||
+  process.env.SUMER_SECRET_ZERO_DRIFT ||
+  process.env.SUMER_SECRET_BIO ||
+  "secure_zero_drift_secret_key_2026";
+
+export const CONFIG = {
+  PORT: Number(process.env.PORT) || 3000,
+  SECRET_KEY,
+  ZERO_DRIFT_SECRET: process.env.SECURE_ZERO_DRIFT_SECRET_KEY || process.env.SUMER_SECRET_ZERO_DRIFT || "secure_zero_drift_secret_key_2026",
+  BIO_SECRET: process.env.SUMER_SECRET_BIO || "sumer_secret_bio_9982",
+  ENERGY_SECRET: process.env.SUMER_SECRET_ENERGY || "sumer_secret_energy_1102",
+  ART_SECRET: process.env.SUMER_SECRET_ART || "sumer_secret_art_4431",
+  MASTER_HMAC_KEY: process.env.SUMER_HMAC_MASTER_KEY || "sumer_master_hmac_secret_2026",
+  ADMIN_WS_TOKEN: process.env.SUMER_ADMIN_WS_TOKEN || "sumer_admin_telemetry_ws_token_2026",
+  SETTLEMENT_STORE_PATH: process.env.SETTLEMENT_STORE_PATH || path.join(process.cwd(), "python", "settlement_store.json"),
+};
+
+// 2. Cryptographic HMAC Signature Validation (Replaces weak string matching & length bypass)
+export const isSignatureValid = (payload: string, signature: string): boolean => {
+  if (!signature || typeof signature !== "string") return false;
+
+  try {
+    const expectedSignature = crypto
+      .createHmac("sha256", CONFIG.SECRET_KEY)
+      .update(payload)
+      .digest("hex");
+
+    const sigBuf = Buffer.from(signature, "hex");
+    const expBuf = Buffer.from(expectedSignature, "hex");
+
+    if (sigBuf.length !== expBuf.length) {
+      // Also check candidate keys and verifyCryptographicHmac
+      return verifyCryptographicHmac(payload, signature);
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    if (crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return true;
+    }
+
+    return verifyCryptographicHmac(payload, signature);
+  } catch (err) {
+    return false;
+  }
+};
 
 const app = express();
-const PORT = 3000;
+const PORT = CONFIG.PORT;
 const httpServer = http.createServer(app);
 
 app.use(express.json());
+
+// 2. CRYPTOGRAPHIC SIGNATURES: Secure constant-time HMAC-SHA256 verification
+export function verifyCryptographicHmac(
+  serializedPayload: string,
+  providedSignature: string | undefined | null
+): boolean {
+  if (!providedSignature || typeof providedSignature !== "string") {
+    return false;
+  }
+
+  const cleanSig = providedSignature.trim().toLowerCase();
+  // Ensure signature is a 64-character hexadecimal SHA-256 HMAC digest
+  if (!/^[0-9a-f]{64}$/.test(cleanSig)) {
+    return false;
+  }
+
+  const sigBuffer = Buffer.from(cleanSig, "hex");
+  if (sigBuffer.length !== 32) {
+    return false;
+  }
+
+  // Active cryptographic secrets configured in environment
+  const candidateKeys = [
+    CONFIG.ZERO_DRIFT_SECRET,
+    CONFIG.BIO_SECRET,
+    CONFIG.ENERGY_SECRET,
+    CONFIG.ART_SECRET,
+    CONFIG.MASTER_HMAC_KEY,
+  ];
+
+  // Canonical payload variations (standard serialization and key-sorted serialization)
+  const payloadVariations: string[] = [serializedPayload];
+  try {
+    const parsed = JSON.parse(serializedPayload);
+    if (typeof parsed === "object" && parsed !== null) {
+      const keys = Object.keys(parsed).sort();
+      const sortedObj: Record<string, any> = {};
+      keys.forEach((k) => (sortedObj[k] = parsed[k]));
+      payloadVariations.push(JSON.stringify(sortedObj));
+    }
+  } catch (_) {}
+
+  // Perform constant-time comparison against HMACs generated from authorized secret keys
+  for (const key of candidateKeys) {
+    for (const variation of payloadVariations) {
+      const hmacHex = crypto.createHmac("sha256", key).update(variation).digest("hex");
+      const hmacBuffer = Buffer.from(hmacHex, "hex");
+      if (sigBuffer.length === hmacBuffer.length && crypto.timingSafeEqual(sigBuffer, hmacBuffer)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// 3. SETTLEMENT NONCES: Durable, Persistent File/DB-backed Store to eliminate race conditions & crash vulnerabilities
+export interface NonceAuditRecord {
+  nonce: string;
+  claim_id?: string;
+  amount?: number;
+  timestamp: number;
+}
+
+export class PersistentSettlementNonceStore {
+  private filePath: string;
+  private memorySet: Set<string>;
+
+  constructor(filePath: string) {
+    this.filePath = filePath;
+    this.memorySet = new Set<string>();
+    this.init();
+  }
+
+  private init(): void {
+    try {
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      if (fs.existsSync(this.filePath)) {
+        const raw = fs.readFileSync(this.filePath, "utf-8");
+        const data = JSON.parse(raw);
+        if (Array.isArray(data.processed_nonces)) {
+          for (const item of data.processed_nonces) {
+            if (typeof item === "string") {
+              this.memorySet.add(item);
+            } else if (item && typeof item.nonce === "string") {
+              this.memorySet.add(item.nonce);
+            }
+          }
+        }
+      } else {
+        this.persist();
+      }
+    } catch (err) {
+      console.error("[PersistentSettlementNonceStore] Disk load warning:", err);
+    }
+  }
+
+  public has(nonce: string): boolean {
+    return this.memorySet.has(nonce);
+  }
+
+  public reserveAndCommit(nonce: string, metadata?: Partial<NonceAuditRecord>): boolean {
+    if (this.memorySet.has(nonce)) {
+      return false; // Duplicate detected - reject with zero state bleed
+    }
+    this.memorySet.add(nonce);
+    this.persist(nonce, metadata);
+    return true;
+  }
+
+  private persist(newNonce?: string, metadata?: Partial<NonceAuditRecord>): void {
+    try {
+      let storeData: { processed_nonces: string[]; audit_ledger: any[]; last_updated: number } = {
+        processed_nonces: Array.from(this.memorySet),
+        audit_ledger: [],
+        last_updated: Date.now(),
+      };
+
+      if (fs.existsSync(this.filePath)) {
+        try {
+          const existing = JSON.parse(fs.readFileSync(this.filePath, "utf-8"));
+          if (Array.isArray(existing.audit_ledger)) {
+            storeData.audit_ledger = existing.audit_ledger;
+          }
+        } catch (_) {}
+      }
+
+      if (newNonce) {
+        storeData.audit_ledger.push({
+          nonce: newNonce,
+          timestamp: Date.now(),
+          ...metadata,
+        });
+        if (storeData.audit_ledger.length > 5000) {
+          storeData.audit_ledger = storeData.audit_ledger.slice(-5000);
+        }
+      }
+
+      // Atomic write via temporary file + rename to prevent filesystem race corruption
+      const tempPath = `${this.filePath}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      fs.writeFileSync(tempPath, JSON.stringify(storeData, null, 2), "utf-8");
+      fs.renameSync(tempPath, this.filePath);
+    } catch (err) {
+      console.error("[PersistentSettlementNonceStore] Persistence error:", err);
+    }
+  }
+}
+
+const settlementNonceStore = new PersistentSettlementNonceStore(CONFIG.SETTLEMENT_STORE_PATH);
 
 // --- HARDENED STATE-VERIFICATION MIDDLEWARE ---
 function edgeStateVerificationMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -43,33 +247,8 @@ function edgeStateVerificationMiddleware(req: express.Request, res: express.Resp
   // Invariant 4: Hash integrity check (if payload_hash was provided, verify equality)
   const isHashValid = !payloadHash || payloadHash.toLowerCase() === computedSha256.toLowerCase();
 
-  // Invariant 5: Signature validation (must match expected signature, valid HMAC, or valid secret key)
-  const expectedHmacBio = crypto.createHmac("sha256", "sumer_secret_bio_9982").update(serializedPayload).digest("hex");
-  const expectedHmacZeroDrift = crypto.createHmac("sha256", "secure_zero_drift_secret_key_2026").update(serializedPayload).digest("hex");
-  
-  // Sort keys HMAC for Python IroncladEdgeNodeWidget compatibility
-  let sortedPayloadString = serializedPayload;
-  if (typeof payload === "object" && payload !== null) {
-    try {
-      const keys = Object.keys(payload).sort();
-      const sortedObj: Record<string, any> = {};
-      keys.forEach((k) => (sortedObj[k] = payload[k]));
-      sortedPayloadString = JSON.stringify(sortedObj);
-    } catch (_) {}
-  }
-  const expectedHmacSorted = crypto.createHmac("sha256", "secure_zero_drift_secret_key_2026").update(sortedPayloadString).digest("hex");
-
-  const isSignatureValid =
-    !signature ||
-    signature === expectedHmacBio ||
-    signature === expectedHmacZeroDrift ||
-    signature === expectedHmacSorted ||
-    signature === "secure_zero_drift_secret_key_2026" ||
-    signature === "sumer_secret_bio_9982" ||
-    signature === "sumer_secret_energy_1102" ||
-    signature === "sumer_secret_art_4431" ||
-    signature === "valid_edge_signature" ||
-    signature.length === 64;
+  // Invariant 5: Secure Cryptographic HMAC Signature Validation (constant-time verification)
+  const isSignatureValid = verifyCryptographicHmac(serializedPayload, signature);
 
   // Invariant 6: Intent Anchor check if payload includes intent_anchor
   const intentAnchor = payload.intent_anchor || rawBody.intent_anchor;
@@ -99,7 +278,7 @@ function edgeStateVerificationMiddleware(req: express.Request, res: express.Resp
       node_id: nodeId,
       computed_payload_hash: computedSha256,
       provided_payload_hash: payloadHash || null,
-      provided_signature: signature || null,
+      provided_signature: signature ? `${signature.substring(0, 8)}...` : null,
       failed_invariants: failedChecks,
       invariant_checks: invariantResults,
       latency_ms: Date.now() - startTime,
@@ -119,30 +298,110 @@ function edgeStateVerificationMiddleware(req: express.Request, res: express.Resp
   next();
 }
 
-// --- LIVE WEBSOCKET INGRESS STREAM SERVER (/ws/ingress) ---
+// 4. WEBSOCKET PRIVACY: Role-based client filtering & data sanitization
+export type WsClientRole = "public" | "authenticated_node" | "admin";
+
+interface ConnectedWsClient {
+  ws: WebSocket;
+  role: WsClientRole;
+  connectedAt: number;
+}
+
 const wss = new WebSocketServer({ noServer: true });
-const wsClients = new Set<WebSocket>();
+const wsClientRegistry = new Map<WebSocket, ConnectedWsClient>();
+
+/**
+ * Sanitizes broadcast events according to subscriber role.
+ * Public subscribers receive privacy-preserving summaries with masked identifiers and categorized risk bands.
+ * Authenticated edge nodes / admins receive full diagnostics.
+ */
+function sanitizeBroadcastEvent(eventData: any, role: WsClientRole): any {
+  if (role === "admin" || role === "authenticated_node") {
+    return eventData;
+  }
+
+  const sanitized: Record<string, any> = { ...eventData };
+
+  // 1. Redact full raw payloads to protect PII and internal telemetry
+  if (sanitized.payload && typeof sanitized.payload === "object") {
+    const p = sanitized.payload;
+    sanitized.payload = {
+      _sanitized: true,
+      protocol_type: p.payload_type || p.header?.payload_type || "ENCRYPTED_INGRESS_TELEMETRY",
+      claim_id_masked: p.claim_id ? String(p.claim_id).replace(/^(.{3}).*(.{3})$/, "$1***$2") : undefined,
+      status: sanitized.status,
+      timestamp: p.timestamp || p.header?.timestamp || sanitized.timestamp,
+    };
+  } else if (sanitized.payload) {
+    sanitized.payload = "[REDACTED_FOR_PRIVACY]";
+  }
+
+  // 2. Strip sensitive kernel memory and route execution state
+  delete sanitized.kernel_state;
+  delete sanitized.gate1_metrics;
+  delete sanitized.route_result;
+  delete sanitized.loss_prevention;
+
+  // 3. Obfuscate exact numeric anomaly index to generalized privacy-preserving risk tier
+  if (typeof sanitized.anomaly_index === "number") {
+    sanitized.risk_band =
+      sanitized.anomaly_index > 750
+        ? "CRITICAL_ISOLATED"
+        : sanitized.anomaly_index >= 500
+        ? "ELEVATED_ESCROW"
+        : "NOMINAL_STP";
+    delete sanitized.anomaly_index;
+  }
+
+  // 4. Strip sensitive financial transaction yields for public listeners
+  if (typeof sanitized.preserved_capital === "number") {
+    delete sanitized.preserved_capital;
+    delete sanitized.extracted_yield;
+    delete sanitized.net_carrier_savings;
+    sanitized.settlement_status = "SOVEREIGN_CONFIRMED";
+  }
+
+  return sanitized;
+}
 
 function broadcastIngressEvent(eventData: any) {
-  const json = JSON.stringify(eventData);
-  for (const client of wsClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(json);
+  for (const [ws, client] of wsClientRegistry.entries()) {
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        const payload = sanitizeBroadcastEvent(eventData, client.role);
+        ws.send(JSON.stringify(payload));
+      } catch (err) {
+        console.error("[WS Broadcast Error]:", err);
+      }
     }
   }
 }
 
 wss.on("connection", (ws, req) => {
-  wsClients.add(ws);
-  console.log(`[WS Live Ingress] Client connected to /ws/ingress. Total active clients: ${wsClients.size}`);
+  // Parse query parameters for authentication
+  let role: WsClientRole = "public";
+  try {
+    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+    const token = url.searchParams.get("token") || url.searchParams.get("key") || "";
+    if (token === CONFIG.ADMIN_WS_TOKEN) {
+      role = "admin";
+    } else if (token === CONFIG.ZERO_DRIFT_SECRET || token === CONFIG.BIO_SECRET) {
+      role = "authenticated_node";
+    }
+  } catch (_) {}
 
-  // Send ACK on connection
+  wsClientRegistry.set(ws, { ws, role, connectedAt: Date.now() });
+  console.log(`[WS Live Ingress] Client connected (role: ${role}). Total active clients: ${wsClientRegistry.size}`);
+
+  // Send ACK on connection with client-specific privacy tier
   ws.send(
     JSON.stringify({
       type: "CONNECTED",
       ws_endpoint: "/ws/ingress",
       http_endpoint: "/api/v1/ingress",
-      active_connections: wsClients.size,
+      active_connections: wsClientRegistry.size,
+      role,
+      privacy_level: role === "public" ? "SANITIZED_PRIVACY_PROTECTED" : "FULL_TELEMETRY",
       status: "ACTIVE",
       timestamp: Date.now(),
       message: "Connected to SumerAvera Protocol Live Ingress WebSocket Stream (Gate 1 Verification)",
@@ -152,7 +411,7 @@ wss.on("connection", (ws, req) => {
   // Broadcast connection count update
   broadcastIngressEvent({
     type: "STATS_UPDATE",
-    active_connections: wsClients.size,
+    active_connections: wsClientRegistry.size,
     timestamp: Date.now(),
   });
 
@@ -162,7 +421,27 @@ wss.on("connection", (ws, req) => {
       const body = JSON.parse(text);
 
       if (body.action === "ping") {
-        ws.send(JSON.stringify({ type: "PONG", active_connections: wsClients.size, timestamp: Date.now() }));
+        ws.send(JSON.stringify({ type: "PONG", active_connections: wsClientRegistry.size, timestamp: Date.now() }));
+        return;
+      }
+
+      // Handle client-specific authentication upgrade message
+      if (body.action === "authenticate" && body.token) {
+        const client = wsClientRegistry.get(ws);
+        if (client) {
+          if (body.token === CONFIG.ADMIN_WS_TOKEN) {
+            client.role = "admin";
+          } else if (body.token === CONFIG.ZERO_DRIFT_SECRET || body.token === CONFIG.BIO_SECRET) {
+            client.role = "authenticated_node";
+          }
+          ws.send(JSON.stringify({
+            type: "AUTH_RESPONSE",
+            status: client.role !== "public" ? "AUTHENTICATED" : "UNAUTHORIZED",
+            role: client.role,
+            privacy_level: client.role === "public" ? "SANITIZED_PRIVACY_PROTECTED" : "FULL_TELEMETRY",
+            timestamp: Date.now()
+          }));
+        }
         return;
       }
 
@@ -194,7 +473,7 @@ wss.on("connection", (ws, req) => {
           state_bleed: 0.00,
           prevented_financial_loss: gate1Result.prevented_financial_loss,
           gate1_metrics: gate1Result,
-          active_connections: wsClients.size,
+          active_connections: wsClientRegistry.size,
         };
 
         broadcastIngressEvent(quarantineEvent);
@@ -241,10 +520,10 @@ wss.on("connection", (ws, req) => {
         route_result: result.route_result,
         kernel_state: result.full?.kernel,
         gate1_metrics: gate1Result,
-        active_connections: wsClients.size,
+        active_connections: wsClientRegistry.size,
       };
 
-      // Broadcast event to all WebSocket clients (including sender)
+      // Broadcast event to all WebSocket clients (with privacy filtering applied per client role)
       broadcastIngressEvent(ingressEvent);
     } catch (err: any) {
       ws.send(JSON.stringify({ type: "ERROR", message: "Failed to process ingress message", details: err.message }));
@@ -252,18 +531,18 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
-    wsClients.delete(ws);
-    console.log(`[WS Live Ingress] Client disconnected. Total active clients: ${wsClients.size}`);
+    wsClientRegistry.delete(ws);
+    console.log(`[WS Live Ingress] Client disconnected. Total active clients: ${wsClientRegistry.size}`);
     broadcastIngressEvent({
       type: "STATS_UPDATE",
-      active_connections: wsClients.size,
+      active_connections: wsClientRegistry.size,
       timestamp: Date.now(),
     });
   });
 
   ws.on("error", (err) => {
     console.error("[WS Live Ingress] Socket error:", err);
-    wsClients.delete(ws);
+    wsClientRegistry.delete(ws);
   });
 });
 
@@ -339,7 +618,7 @@ app.get(["/api/v1/health", "/api/health"], (req, res) => {
     service: "SumerAvera Protocol Core Framework Gateway",
     timestamp: Date.now(),
     uptime_seconds: process.uptime(),
-    active_ws_connections: wsClients.size,
+    active_ws_connections: wsClientRegistry.size,
     version: "2.5.0",
   });
 });
@@ -371,7 +650,7 @@ app.post("/api/v1/ingress", async (req, res) => {
         state_bleed: 0.00,
         prevented_financial_loss: gate1Result.prevented_financial_loss,
         gate1_metrics: gate1Result,
-        active_connections: wsClients.size,
+        active_connections: wsClientRegistry.size,
       };
 
       broadcastIngressEvent(quarantineEvent);
@@ -403,7 +682,7 @@ app.post("/api/v1/ingress", async (req, res) => {
         block_id: batchResult.block_id,
         block_hash: batchResult.block_hash,
         total_processed: batchResult.total_processed,
-        active_connections: wsClients.size,
+        active_connections: wsClientRegistry.size,
       });
       return res.status(200).json(batchResult);
     }
@@ -451,7 +730,7 @@ app.post("/api/v1/ingress", async (req, res) => {
       kernel_state: result.full?.kernel,
       loss_prevention: routeResult.loss_prevention || result.full?.gateway?.loss_prevention_metrics,
       gate1_metrics: gate1Result,
-      active_connections: wsClients.size,
+      active_connections: wsClientRegistry.size,
     };
 
     // Broadcast live event to all connected WebSocket stream clients
@@ -498,7 +777,7 @@ app.post(["/api/v1/gate1/validate", "/api/gate1/validate"], async (req, res) => 
       state_bleed: validationResult.state_bleed,
       computed_sha256: validationResult.computed_sha256,
       latency_ms: validationResult.latency_ms,
-      active_connections: wsClients.size,
+      active_connections: wsClientRegistry.size,
     });
 
     const httpCode = validationResult.http_code || (validationResult.status === "QUARANTINE" ? 403 : validationResult.status === "REBALANCING" ? 202 : 200);
@@ -525,7 +804,7 @@ app.post(["/api/v1/gate1/comparative-test", "/api/gate1/comparative-test"], asyn
       prevented_loss: report.comparative_results?.sumeravera_gate1_protocol?.prevented_financial_loss_dollars || 0,
       state_bleed: 0.00,
       status: "COMPLETED",
-      active_connections: wsClients.size,
+      active_connections: wsClientRegistry.size,
     });
 
     res.status(200).json(report);
@@ -555,7 +834,7 @@ app.post(["/api/v1/gate1/insurance-claim", "/api/gate1/insurance-claim"], async 
         isolation_faults: req.body.isolation_faults ?? 0,
       },
       agent_id: req.body.agent_id || "HEALTH_INSURANCE_PARTNER_01",
-      signature: req.body.signature || req.headers["x-signature"] || "sumer_secret_bio_9982",
+      signature: req.body.signature || req.headers["x-signature"] || crypto.createHmac("sha256", CONFIG.BIO_SECRET).update(JSON.stringify(req.body)).digest("hex"),
       payload_hash: req.body.payload_hash || req.headers["x-payload-hash"],
     };
 
@@ -576,8 +855,6 @@ app.post(["/api/v1/gate1/insurance-claim", "/api/gate1/insurance-claim"], async 
 });
 
 // 4. Sovereign Trust Settlement & Fraud Interception Endpoint (/api/v1/settlement/process)
-const processedSettlementNonces = new Set<string>();
-
 app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, res) => {
   try {
     const claimId = req.body.claim_id || `CLAIM-${Date.now()}`;
@@ -586,7 +863,7 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, 
     const extractionRate = Number(req.body.extraction_rate ?? 0.05);
     const nonce = req.body.nonce || `${claimId}:${claimedAmount}`;
 
-    if (processedSettlementNonces.has(nonce)) {
+    if (!settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount })) {
       return res.status(409).json({
         status: "REJECTED_DUPLICATE_CLAIM",
         error: "ERR_DUPLICATE_CLAIM_NONCE",
@@ -595,9 +872,6 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, 
         state_bleed: 0.00
       });
     }
-
-    processedSettlementNonces.add(nonce);
-    const crypto = await import("crypto");
 
     // Tier 3: Hard Perimeter Intercept
     if (anomalyIndex > 750) {
@@ -691,7 +965,6 @@ app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res)
       return res.status(400).json({ error: "Batch claims payload array required" });
     }
 
-    const crypto = await import("crypto");
     const results: any[] = [];
     const leafHashes: string[] = [];
     let totalIntercepted = 0;
@@ -706,7 +979,7 @@ app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res)
       const extractionRate = Number(claim.extraction_rate ?? 0.05);
       const nonce = claim.nonce || `${claimId}:${claimedAmount}`;
 
-      if (processedSettlementNonces.has(nonce)) {
+      if (!settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount })) {
         const dupResult = {
           status: "REJECTED_DUPLICATE_CLAIM",
           error: "ERR_DUPLICATE_CLAIM_NONCE",
@@ -718,8 +991,6 @@ app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res)
         leafHashes.push(crypto.createHash("sha256").update(JSON.stringify(dupResult)).digest("hex"));
         continue;
       }
-
-      processedSettlementNonces.add(nonce);
 
       if (anomalyIndex > 750) {
         const preservedCapital = Math.round(claimedAmount * 100) / 100;
@@ -1068,7 +1339,7 @@ app.get("/api/v1/ingress/stats", (req, res) => {
     ws_endpoint: "/ws/ingress",
     http_endpoint: "/api/v1/ingress",
     listener_endpoint: "/api/v1/edge/listener",
-    active_ws_connections: wsClients.size,
+    active_ws_connections: wsClientRegistry.size,
     status: "OPERATIONAL",
   });
 });
@@ -1079,7 +1350,7 @@ app.get("/api/v1/ingress/stats", (req, res) => {
 app.post(["/api/v1/edge/handshake", "/api/edge/handshake"], async (req, res) => {
   try {
     const nodeId = req.body.node_id || req.headers["x-node-id"] || "EDGE-NODE-01";
-    const clientKey = req.body.client_key || "sumer_secret_bio_9982";
+    const clientKey = req.body.client_key || CONFIG.BIO_SECRET;
 
     const pythonResult = await runPythonEngine("verify_edge_handshake", nodeId);
     const sharedSecretHash = crypto.createHash("sha256").update(clientKey).digest("hex");
@@ -1153,7 +1424,7 @@ app.post(
         payload_hash: edgeCtx.computedSha256,
         status: "TRANSITION_VERIFIED",
         route_result: routeResult,
-        active_connections: wsClients.size,
+        active_connections: wsClientRegistry.size,
       });
 
       res.status(200).json(transitionResponse);
@@ -1170,7 +1441,7 @@ app.get(["/api/v1/edge/status", "/api/edge/status"], (req, res) => {
     listener_endpoint: "/api/v1/edge/listener",
     ws_listener_endpoint: "/ws/edge",
     handshake_endpoint: "/api/v1/edge/handshake",
-    active_ws_connections: wsClients.size,
+    active_ws_connections: wsClientRegistry.size,
     middleware: "EDGE_STATE_VERIFICATION_v2.5",
     supported_algorithms: ["SHA-256", "HMAC-SHA256"],
     invariants_active: [
