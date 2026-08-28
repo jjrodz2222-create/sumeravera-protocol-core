@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- Root `README.md` with adopter group utility mapping, production distribution path, trust signals, and documentation links.
+- `docs/DEPLOYMENT_GUIDE.md` covering required environment variables, security expectations, and an operations runbook.
+- `docs/INTEGRATION_KIT.md` with endpoint catalog, minimal request/response contracts, and a sample client flow.
+- `docs/ROBUSTNESS_TESTING.md` documenting layered testing, load/soak strategy, observability, and staged rollout guidance.
+- `docs/KNOWN_LIMITS.md` with public protocol constraints and adoption caveats.
+- `test/integration.security-resilience.test.mjs` for adversarial and resilience coverage (signature rejection, replay defense, malformed payloads, unauthorized WebSocket auth, health checks).
+- `test/load-soak.mjs` for burst and soak runtime checks with latency/error-rate thresholds.
+
+### Changed
+- Expanded npm scripts to include `test:regression`, `test:integration`, `test:coverage`, `test:load`, and `test:soak`.
+- Strengthened `.github/workflows/verify.yml` to enforce layered tests, coverage threshold checks, dependency security audit gate, and burst load verification.
+
+---
+
 ## [2.5.0] - 2026-08-20
 
 ### Release Codename
