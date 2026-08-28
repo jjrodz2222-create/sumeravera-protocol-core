@@ -20,19 +20,19 @@ SumerAvera Protocol Core is a fraud-resilient ingress, verification, and settlem
 
 ## Deployment and integration guides
 
-- `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/docs/DEPLOYMENT_GUIDE.md`
-- `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/docs/INTEGRATION_KIT.md`
-- `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/docs/ROBUSTNESS_TESTING.md`
+- [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md)
+- [`docs/INTEGRATION_KIT.md`](docs/INTEGRATION_KIT.md)
+- [`docs/ROBUSTNESS_TESTING.md`](docs/ROBUSTNESS_TESTING.md)
 
 ## Trust signals
 
-- Versioned release artifacts and release notes in `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/RELEASE_NOTES.md`
-- Changelog discipline in `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/CHANGELOG.md`
-- Automated CI checks in `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/.github/workflows/verify.yml`
+- Versioned release artifacts and release notes in [`RELEASE_NOTES.md`](RELEASE_NOTES.md)
+- Changelog discipline in [`CHANGELOG.md`](CHANGELOG.md)
+- Automated CI checks in [`.github/workflows/verify.yml`](.github/workflows/verify.yml)
 
 ## Public known limits
 
-See `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/docs/KNOWN_LIMITS.md` before production onboarding.
+See [`docs/KNOWN_LIMITS.md`](docs/KNOWN_LIMITS.md) before production onboarding.
 
 ## Validation commands
 

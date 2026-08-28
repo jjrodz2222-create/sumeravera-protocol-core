@@ -3,8 +3,10 @@ import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { mkdtempSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = "/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core";
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(testDir, "..");
 
 function parseArgs() {
   const args = Object.fromEntries(
@@ -48,10 +50,8 @@ async function runBurst(baseUrl, totalRequests, concurrency) {
   const latencies = [];
   let failures = 0;
 
-  let cursor = 0;
-  const workers = Array.from({ length: concurrency }, async () => {
-    while (cursor < totalRequests) {
-      const id = cursor++;
+  const workers = Array.from({ length: concurrency }, async (_, workerIndex) => {
+    for (let id = workerIndex; id < totalRequests; id += concurrency) {
       const start = Date.now();
       try {
         const endpoint = id % 2 === 0 ? "/api/v1/health" : "/api/v1/ingress/stats";

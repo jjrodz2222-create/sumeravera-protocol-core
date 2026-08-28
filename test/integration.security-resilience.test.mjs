@@ -5,9 +5,11 @@ import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { mkdtempSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
-const repoRoot = "/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core";
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(testDir, "..");
 const port = 3300 + Math.floor(Math.random() * 200);
 const baseUrl = `http://127.0.0.1:${port}`;
 const tempDir = mkdtempSync(path.join(os.tmpdir(), "sumeravera-integration-"));
@@ -27,6 +29,10 @@ async function waitForHealth(timeoutMs = 30000) {
 }
 
 async function startServer() {
+  if (serverProc && !serverProc.killed) {
+    return;
+  }
+
   serverProc = spawn(
     path.join(repoRoot, "node_modules", ".bin", "tsx"),
     [path.join(repoRoot, "server.ts")],
@@ -54,6 +60,7 @@ async function stopServer() {
     once(serverProc, "exit"),
     new Promise((resolve) => setTimeout(resolve, 5000)),
   ]);
+  serverProc = undefined;
 }
 
 function waitForWsMessage(ws, timeoutMs = 5000) {

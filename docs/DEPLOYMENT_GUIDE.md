@@ -16,7 +16,7 @@ Set the following before production deployment:
 - `WAL_LOG_PATH`
 - `SUMER_SALT`
 
-Reference defaults and examples in `/home/runner/work/sumeravera-protocol-core/sumeravera-protocol-core/.env.example`.
+Reference defaults and examples in `.env.example`.
 
 ## Security expectations
 
