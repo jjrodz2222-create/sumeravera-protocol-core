@@ -67,10 +67,11 @@ const httpServer = http.createServer(app);
 // Security HTTP headers
 app.use(helmet());
 
-// Rate limiting: tighter on mutation endpoints, looser on reads
+// Rate limiting: standardLimiter applied globally; mutationLimiter overrides on write endpoints
 const standardLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
 const mutationLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
 
+app.use(standardLimiter);
 app.use(express.json());
 
 // 2. CRYPTOGRAPHIC SIGNATURES: Secure constant-time HMAC-SHA256 verification

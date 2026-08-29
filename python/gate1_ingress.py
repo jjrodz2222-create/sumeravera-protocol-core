@@ -316,7 +316,8 @@ class Gate1IngressValidator:
         if expected_secret:
             expected_hmac = hmac.new(expected_secret.encode('utf-8'), computed_sha256.encode('utf-8'), hashlib.sha256).hexdigest()
             expected_hmac_alt = hmac.new(expected_secret.encode('utf-8'), alt_sha256.encode('utf-8'), hashlib.sha256).hexdigest()
-            if provided_sig in (expected_hmac, expected_hmac_alt):
+            if (hmac.compare_digest(provided_sig, expected_hmac) or
+                    hmac.compare_digest(provided_sig, expected_hmac_alt)):
                 signature_verified = True
 
         # 4. Extract Financial / Insurance Claim Values
