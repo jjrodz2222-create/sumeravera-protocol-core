@@ -211,6 +211,10 @@ export class RobustSettlementWALStore {
   private walPath: string;
   private legacyStorePath: string;
   private activeNonceMap = new Map<string, number>(); // Nonce -> Timestamp
+  // Nonces that were accepted in-memory but whose WAL write failed.  They are
+  // kept here so that retries during a persistent storage outage are still
+  // rejected, preventing the same nonce from being committed multiple times.
+  private walFailedNonces = new Set<string>();
   private mutex = new TypedAsyncMutex();
 
   constructor(walPath: string, legacyStorePath: string) {
@@ -264,13 +268,16 @@ export class RobustSettlementWALStore {
 
   public has(nonce: string): boolean {
     // Nonces never expire — idempotency must hold for the lifetime of the store.
-    return this.activeNonceMap.has(nonce);
+    // A nonce that failed to persist to the WAL is also treated as "seen" so
+    // that retries during a storage outage do not re-accept it in-memory.
+    return this.activeNonceMap.has(nonce) || this.walFailedNonces.has(nonce);
   }
 
   /**
    * Reserves and commits a settlement nonce using strict generic mutex locks.
-   * Fail-closed: if the WAL write fails the in-memory entry is rolled back and
-   * false is returned so the caller can retry or surface the error.
+   * Fail-closed: if the WAL write fails the in-memory entry is moved to the
+   * walFailedNonces set so that any subsequent retry during the same outage is
+   * also rejected, preserving idempotency even when storage is unavailable.
    */
   public async reserveAndCommit(nonce: string, metadata?: Partial<NonceAuditRecord>): Promise<boolean> {
     return this.mutex.lock<boolean>(async () => {
@@ -291,10 +298,11 @@ export class RobustSettlementWALStore {
         await fs.promises.appendFile(this.walPath, walEntry, "utf-8");
         return true;
       } catch (err) {
-        // Roll back the in-memory entry so a subsequent retry can succeed once
-        // the underlying storage issue is resolved.
+        // Move to the failed set so that retries during a WAL outage are
+        // rejected rather than re-accepted, preserving idempotency.
         this.activeNonceMap.delete(nonce);
-        console.error("[RobustSettlementWALStore] WAL append error — in-memory entry rolled back:", err);
+        this.walFailedNonces.add(nonce);
+        console.error("[RobustSettlementWALStore] WAL append error — nonce moved to failed set:", err);
         return false;
       }
     });

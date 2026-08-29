@@ -574,11 +574,16 @@ class TruthVerificationEngine:
         agent_info = REGISTERED_AGENTS[agent_id]
         expected_secret = agent_info["secret_key"]
 
-        # Verify HMAC-SHA256 signature: HMAC(secret, SHA256(agent_id + secret + dE))
-        # Only the computed HMAC digest is accepted; plaintext secrets, override
-        # tokens, and prefix-based catches are rejected to prevent trivial bypass.
-        sig_data = f"{agent_id}:{expected_secret}:{requested_dE}".encode('utf-8')
-        expected_sig = hmac.new(expected_secret.encode('utf-8'), hashlib.sha256(sig_data).hexdigest().encode('utf-8'), hashlib.sha256).hexdigest()
+        # Verify HMAC-SHA256 signature: HMAC(secret, SHA256(agent_id + ":" + dE))
+        # The HMAC key is the agent secret; the message is a SHA-256 of the
+        # agent-id and requested-dE (without the secret in the hashed data so
+        # the secret is only used once, as the HMAC key).
+        sig_data = f"{agent_id}:{requested_dE}".encode('utf-8')
+        expected_sig = hmac.new(
+            expected_secret.encode('utf-8'),
+            hashlib.sha256(sig_data).hexdigest().encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
 
         if auth_signature and auth_signature != expected_sig:
             return False, f"CRYPTO_FAILURE: Invalid cryptographic signature for agent '{agent_id}'.", {
