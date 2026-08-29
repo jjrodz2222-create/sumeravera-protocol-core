@@ -226,9 +226,8 @@ export class RobustSettlementWALStore {
         fs.mkdirSync(walDir, { recursive: true });
       }
 
-      const cutoff = Date.now() - CONFIG.NONCE_TTL_MS;
-
-      // 1. Replay from WAL if exists
+      // 1. Replay from WAL if exists — load ALL entries; no TTL expiry so
+      //    idempotency holds unconditionally across restarts.
       if (fs.existsSync(this.walPath)) {
         const content = fs.readFileSync(this.walPath, "utf-8");
         const lines = content.split("\n");
@@ -236,8 +235,8 @@ export class RobustSettlementWALStore {
           if (!line.trim()) continue;
           try {
             const entry = JSON.parse(line);
-            if (entry.nonce && entry.timestamp >= cutoff) {
-              this.activeNonceMap.set(entry.nonce, entry.timestamp);
+            if (entry.nonce) {
+              this.activeNonceMap.set(entry.nonce, entry.timestamp ?? Date.now());
             }
           } catch (_) {}
         }
@@ -264,17 +263,14 @@ export class RobustSettlementWALStore {
   }
 
   public has(nonce: string): boolean {
-    const timestamp = this.activeNonceMap.get(nonce);
-    if (!timestamp) return false;
-    if (Date.now() - timestamp > CONFIG.NONCE_TTL_MS) {
-      this.activeNonceMap.delete(nonce);
-      return false;
-    }
-    return true;
+    // Nonces never expire — idempotency must hold for the lifetime of the store.
+    return this.activeNonceMap.has(nonce);
   }
 
   /**
    * Reserves and commits a settlement nonce using strict generic mutex locks.
+   * Fail-closed: if the WAL write fails the in-memory entry is rolled back and
+   * false is returned so the caller can retry or surface the error.
    */
   public async reserveAndCommit(nonce: string, metadata?: Partial<NonceAuditRecord>): Promise<boolean> {
     return this.mutex.lock<boolean>(async () => {
@@ -295,8 +291,11 @@ export class RobustSettlementWALStore {
         await fs.promises.appendFile(this.walPath, walEntry, "utf-8");
         return true;
       } catch (err) {
-        console.error("[RobustSettlementWALStore] WAL append error:", err);
-        return true;
+        // Roll back the in-memory entry so a subsequent retry can succeed once
+        // the underlying storage issue is resolved.
+        this.activeNonceMap.delete(nonce);
+        console.error("[RobustSettlementWALStore] WAL append error — in-memory entry rolled back:", err);
+        return false;
       }
     });
   }
@@ -589,7 +588,16 @@ app.post("/api/v1/ingress", async (req, res) => {
     try {
       gate1Result = await runGate1Script("validate", JSON.stringify(req.body));
     } catch (g1Err) {
-      console.warn("Gate 1 validation fallback on HTTP ingress:", g1Err);
+      // Gate 1 is unavailable — fail closed: quarantine the request rather than
+      // letting it proceed to the core engine without validation.
+      console.error("Gate 1 validation unavailable on HTTP ingress — failing closed:", g1Err);
+      return res.status(503).json({
+        status: "GATE_1_UNAVAILABLE",
+        http_code: 503,
+        state_bleed: 0.0,
+        message: "Gate 1 ingress validation service is unavailable. Request rejected to preserve perimeter integrity.",
+        timestamp: Date.now(),
+      });
     }
 
     if (gate1Result && gate1Result.status === "QUARANTINE") {
@@ -898,7 +906,17 @@ wss.on("connection", (ws, req) => {
       try {
         gate1Result = await runGate1Script("validate", JSON.stringify(body.payload || body));
       } catch (g1Err) {
-        console.warn("Gate 1 validation fallback:", g1Err);
+        // Gate 1 is unavailable — fail closed: quarantine the request rather than
+        // letting it proceed to the core engine without validation.
+        console.error("Gate 1 validation unavailable on WebSocket ingress — failing closed:", g1Err);
+        ws.send(JSON.stringify({
+          type: "GATE1_UNAVAILABLE",
+          status: "GATE_1_UNAVAILABLE",
+          state_bleed: 0.0,
+          message: "Gate 1 ingress validation service is unavailable. Request rejected to preserve perimeter integrity.",
+          timestamp: Date.now(),
+        }));
+        return;
       }
 
       const payloadObj = body.payload || body;

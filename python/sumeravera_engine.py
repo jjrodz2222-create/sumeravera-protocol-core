@@ -573,20 +573,14 @@ class TruthVerificationEngine:
 
         agent_info = REGISTERED_AGENTS[agent_id]
         expected_secret = agent_info["secret_key"]
-        
-        # Verify simple HMAC signature: SHA256(agent_id + secret + dE)
-        sig_data = f"{agent_id}:{expected_secret}:{requested_dE}".encode('utf-8')
-        expected_sig = hashlib.sha256(sig_data).hexdigest()
-        
-        is_ironclad_sig = auth_signature and (
-            auth_signature.startswith("IRONCLAD") or
-            auth_signature == "secure_zero_drift_secret_key_2026" or
-            auth_signature == expected_secret or
-            auth_signature == expected_sig or
-            auth_signature == "MASTER_OVERRIDE_TOKEN"
-        )
 
-        if auth_signature and not is_ironclad_sig:
+        # Verify HMAC-SHA256 signature: HMAC(secret, SHA256(agent_id + secret + dE))
+        # Only the computed HMAC digest is accepted; plaintext secrets, override
+        # tokens, and prefix-based catches are rejected to prevent trivial bypass.
+        sig_data = f"{agent_id}:{expected_secret}:{requested_dE}".encode('utf-8')
+        expected_sig = hmac.new(expected_secret.encode('utf-8'), hashlib.sha256(sig_data).hexdigest().encode('utf-8'), hashlib.sha256).hexdigest()
+
+        if auth_signature and auth_signature != expected_sig:
             return False, f"CRYPTO_FAILURE: Invalid cryptographic signature for agent '{agent_id}'.", {
                 "code": "INVALID_SIGNATURE",
                 "severity": "HIGH"
@@ -880,8 +874,7 @@ class AdaptiveGatewayHoneypot:
                 "synthetic_response_sent": {
                     "status": "ACCEPTED_DECOY",
                     "synthetic_ledger_hash": fake_block_hash,
-                    "simulated_E": 9999.0,
-                    "honeypot_trap_flag": True
+                    "simulated_E": 9999.0
                 }
             }
             

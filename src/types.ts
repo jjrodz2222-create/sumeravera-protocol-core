@@ -71,7 +71,6 @@ export interface HoneypotLog {
     status: string;
     synthetic_ledger_hash: string;
     simulated_E: number;
-    honeypot_trap_flag: boolean;
   };
 }
 

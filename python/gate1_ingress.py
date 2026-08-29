@@ -299,20 +299,18 @@ class Gate1IngressValidator:
         timestamp_fresh = abs(now - req_timestamp) <= 300.0
 
         # 3. Cryptographic Signature Verification
+        # Only the HMAC-SHA256 of the canonical (or alternate) payload hash is
+        # accepted.  All hardcoded bypass tokens, plaintext secret comparisons,
+        # and the "any 64-char string" catch-all have been removed because they
+        # allow trivial signature forgery by any caller.
         expected_secret = VALID_AGENT_KEYS.get(agent_id, None)
         signature_verified = False
-        
+
         if expected_secret:
-            # Check raw secret match, HMAC match, or master override
             expected_hmac = hmac.new(expected_secret.encode('utf-8'), computed_sha256.encode('utf-8'), hashlib.sha256).hexdigest()
             expected_hmac_alt = hmac.new(expected_secret.encode('utf-8'), alt_sha256.encode('utf-8'), hashlib.sha256).hexdigest()
-            if provided_sig in [expected_secret, expected_hmac, expected_hmac_alt, "MASTER_OVERRIDE_TOKEN", "valid_edge_signature", "secure_zero_drift_secret_key_2026"]:
+            if provided_sig in (expected_hmac, expected_hmac_alt):
                 signature_verified = True
-            elif provided_sig.startswith("IRONCLAD") or len(provided_sig) == 64:
-                # High entropy signature check
-                signature_verified = True
-        elif provided_sig == "MASTER_OVERRIDE_TOKEN" or provided_sig == "secure_zero_drift_secret_key_2026":
-            signature_verified = True
 
         # 4. Extract Financial / Insurance Claim Values
         claimed_val = 0.0
@@ -430,12 +428,13 @@ class Gate1IngressValidator:
             self.quarantine_count += 1
             self.total_prevented_loss += prevented_loss
             
-            # Generate Synthetic Decoy Response
+            # Generate Synthetic Decoy Response — honeypot_trap_flag must NOT be
+            # included: exposing it would immediately reveal the deception to an
+            # attacker inspecting the response body.
             decoy = {
                 "status": "ACCEPTED_DECOY",
                 "synthetic_ledger_hash": hashlib.sha256(f"DECOY_BLOCK_{computed_sha256}_{now}".encode()).hexdigest(),
                 "simulated_E": 1000.0,
-                "honeypot_trap_flag": True,
                 "isolation_mode": "PRE_MEMORY_BARRIER",
                 "state_bleed": 0.00
             }
