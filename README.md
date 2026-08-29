@@ -185,8 +185,8 @@ Runs a standalone throughput benchmark of the Python mathematical engines withou
 |--------|------|-------------|
 | `GET`  | `/api/v1/health` | Liveness check |
 | `POST` | `/api/v1/ingress` | Submit a signed ingress payload |
-| `POST` | `/api/v1/settlement/batch` | Batch settlement (returns Merkle root) |
-| `GET`  | `/api/v1/status` | Current homeostatic engine / kernel state |
+| `POST` | `/api/v1/settlement/process` | Process a claim settlement (includes Gate 1 scoring) |
+| `GET`  | `/api/v1/settlement/proof/:claimId` | Fetch Merkle inclusion proof for a claim |
 | `WS`   | `/ws/ingress` | Real-time ingress event stream |
 
 ---
