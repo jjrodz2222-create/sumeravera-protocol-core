@@ -26,15 +26,18 @@ from dataclasses import dataclass, asdict
 from typing import Dict, List, Any, Tuple, Optional
 
 # --- PROTOCOL SECRETS & REGISTERED KEYS ---
+# Secrets are loaded from environment variables with insecure defaults for local
+# development only.  Set these variables in production via a secrets manager or
+# injected environment (e.g. Docker secrets, Kubernetes Secrets, AWS SSM).
 VALID_AGENT_KEYS = {
-    "agent_bio_1": "sumer_secret_bio_9982",
-    "agent_art_1": "sumer_secret_art_4431",
-    "agent_energy_1": "sumer_secret_energy_1102",
-    "agent_eco_guard": "sumer_secret_gaia_7700",
-    "NODE-US-EDGE-01": "secure_zero_drift_secret_key_2026",
-    "ENTERPRISE_GATEWAY_CLIENT": "secure_zero_drift_secret_key_2026",
-    "HEALTH_INSURANCE_PARTNER_01": "sumer_secret_bio_9982",
-    "GRID_OPERATOR_WEST": "sumer_secret_energy_1102"
+    "agent_bio_1": os.environ.get("SUMER_SECRET_BIO", "sumer_secret_bio_9982"),
+    "agent_art_1": os.environ.get("SUMER_SECRET_ART", "sumer_secret_art_4431"),
+    "agent_energy_1": os.environ.get("SUMER_SECRET_ENERGY", "sumer_secret_energy_1102"),
+    "agent_eco_guard": os.environ.get("SUMER_SECRET_GAIA", "sumer_secret_gaia_7700"),
+    "NODE-US-EDGE-01": os.environ.get("SECURE_ZERO_DRIFT_SECRET_KEY", "secure_zero_drift_secret_key_2026"),
+    "ENTERPRISE_GATEWAY_CLIENT": os.environ.get("SECURE_ZERO_DRIFT_SECRET_KEY", "secure_zero_drift_secret_key_2026"),
+    "HEALTH_INSURANCE_PARTNER_01": os.environ.get("SUMER_SECRET_BIO", "sumer_secret_bio_9982"),
+    "GRID_OPERATOR_WEST": os.environ.get("SUMER_SECRET_ENERGY", "sumer_secret_energy_1102")
 }
 
 ROOT_TRUTH_ANCHOR = "0x8a92f01c7d81a29f8217210e"
@@ -89,6 +92,8 @@ class SumeraVeraIngressEngine:
                 "state_bleed": 0.00
             }
             self.honeypot_storage.append(quarantine_record)
+            if len(self.honeypot_storage) > 1000:
+                self.honeypot_storage = self.honeypot_storage[-1000:]
             return quarantine_record
 
         # Deterministic State Hashing & Ledger Commitment
@@ -99,7 +104,7 @@ class SumeraVeraIngressEngine:
             "payload": payload,
             "previous_hash": self.ledger[-1] if self.ledger else "0" * 64
         }
-       
+
         serialized = json.dumps(block_data, sort_keys=True).encode('utf-8')
         block_hash = hashlib.sha256(serialized).hexdigest()
         self.ledger.append(block_hash)
@@ -147,6 +152,8 @@ class SumeraVeraPCInsuranceEngine:
                 "state_bleed": 0.00
             }
             self.honeypot_storage.append(quarantine_record)
+            if len(self.honeypot_storage) > 1000:
+                self.honeypot_storage = self.honeypot_storage[-1000:]
             return quarantine_record
 
         # Deterministic State Hashing & Ledger Commitment for Valid Claims

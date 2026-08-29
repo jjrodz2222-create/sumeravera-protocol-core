@@ -40,7 +40,8 @@ except ImportError:
 MAX_EARTH_CAPACITY = 2000.0
 FACET_MIN = 0.0
 FACET_MAX = 100.0
-VALID_SECRET_KEY = "sumer_secret_bio_9982"
+# Secret loaded from environment — do not hard-code in production
+VALID_SECRET_KEY = os.environ.get("SUMER_SECRET_BIO", "sumer_secret_bio_9982")
 
 DEFAULT_E_INITIAL = 1000.0  # Earth Carrying Capacity baseline
 DEFAULT_E_CAPACITY = 2000.0 # Maximum Carrying Capacity (K)
@@ -63,33 +64,35 @@ DEFAULT_QUINTET = {
     "energy": 78.0   # H_energy: Clean Thermodynamic Flux
 }
 
-# Recognized Agents & Public Keys
+# Recognized Agents & secrets — loaded from environment variables.
+# Set SUMER_SECRET_BIO, SUMER_SECRET_ART, SUMER_SECRET_ENERGY, SUMER_SECRET_GAIA
+# in your deployment environment; the insecure defaults here are for local dev only.
 REGISTERED_AGENTS = {
     "agent_bio_1": {
         "name": "Bio-Regenerator Prime",
         "role": "Bio/Ecology Synthesizer",
-        "secret_key": "sumer_secret_bio_9982",
+        "secret_key": os.environ.get("SUMER_SECRET_BIO", "sumer_secret_bio_9982"),
         "trusted": True,
         "allowed_facets": ["bio", "water"]
     },
     "agent_art_1": {
         "name": "Aetheria Cultural Weaver",
         "role": "Art & Spirit Curator",
-        "secret_key": "sumer_secret_art_4431",
+        "secret_key": os.environ.get("SUMER_SECRET_ART", "sumer_secret_art_4431"),
         "trusted": True,
         "allowed_facets": ["art", "spirit"]
     },
     "agent_energy_1": {
         "name": "Sol-Hydro Grid Node",
         "role": "Energy/Thermodynamic Balancer",
-        "secret_key": "sumer_secret_energy_1102",
+        "secret_key": os.environ.get("SUMER_SECRET_ENERGY", "sumer_secret_energy_1102"),
         "trusted": True,
         "allowed_facets": ["energy", "water"]
     },
     "agent_eco_guard": {
         "name": "Gaia Guardian Kernel",
         "role": "Homeostatic Equalizer",
-        "secret_key": "sumer_secret_gaia_7700",
+        "secret_key": os.environ.get("SUMER_SECRET_GAIA", "sumer_secret_gaia_7700"),
         "trusted": True,
         "allowed_facets": ["bio", "art", "spirit", "water", "energy"]
     }
@@ -142,6 +145,9 @@ class SHA256Ledger:
             "details": details
         }
         self.chain.append(block)
+        # Cap chain to 10,000 blocks to prevent unbounded memory/disk growth.
+        if len(self.chain) > 10000:
+            self.chain = self.chain[-10000:]
         return block
 
     def commit_state_shift(self, action_type: str, agent_id: str, state_snapshot: Dict, details: str) -> Dict[str, Any]:
@@ -2138,135 +2144,6 @@ class SumerAveraBlockSealer:
         return block_hash
 
 # ------------------------------------------------------------------------------
-# 1 BILLION VECTOR STREAMING ENGINE (mmap + C-struct packing + ProcessPoolExecutor)
-# ------------------------------------------------------------------------------
-BILLION_TOTAL_TARGET = 1_000_000_000  # 1 Billion Vectors
-BILLION_CHUNK_SIZE = 10_000_000       # 10 Million Vectors per Batch
-BILLION_STORAGE_FILE = "billion_vector_ledger.mmap"
-BILLION_FILE_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GB pre-allocated ledger index
-
-def hash_vector_chunk(chunk_id, prev_hash, count):
-    """
-    Worker Process: Uses C-optimized struct packing to rapidly compute SHA-256
-    over binary data streams without storing high-level JSON objects in RAM.
-    """
-    hasher = hashlib.sha256()
-    hasher.update(f"BLOCK:{chunk_id}|PREV:{prev_hash}".encode('utf-8'))
-    raw_payload = struct.pack(f'<{count}I', *range(count))
-    hasher.update(raw_payload)
-    return hasher.hexdigest(), len(raw_payload)
-
-class BillionVectorEngine:
-    def __init__(self, total_target=BILLION_TOTAL_TARGET, chunk_size=BILLION_CHUNK_SIZE, storage_file=BILLION_STORAGE_FILE):
-        self.total_target = total_target
-        self.chunk_size = chunk_size
-        self.storage_file = storage_file
-        self.current_step = 0
-        self.verified_blocks = 0
-        self.previous_hash = "0" * 64
-
-        try:
-            if not os.path.exists(self.storage_file) or os.path.getsize(self.storage_file) < 1024:
-                with open(self.storage_file, "wb") as f:
-                    f.seek(BILLION_FILE_SIZE_BYTES - 1)
-                    f.write(b"\x00")
-        except Exception:
-            pass
-
-    async def execute_billion_run(self):
-        start_time = time.perf_counter()
-        loop = asyncio.get_running_loop()
-
-        executor = None
-        try:
-            executor = ProcessPoolExecutor()
-        except Exception:
-            executor = None
-
-        try:
-            with open(self.storage_file, "r+b") as f:
-                try:
-                    mmapped_ledger = mmap.mmap(f.fileno(), 0)
-                except Exception:
-                    mmapped_ledger = None
-
-                offset = 0
-
-                for chunk_idx in range(0, self.total_target, self.chunk_size):
-                    self.verified_blocks += 1
-                    block_id = self.verified_blocks
-
-                    if executor:
-                        block_hash, byte_size = await loop.run_in_executor(
-                            executor,
-                            hash_vector_chunk,
-                            block_id,
-                            self.previous_hash,
-                            self.chunk_size
-                        )
-                    else:
-                        block_hash, byte_size = hash_vector_chunk(block_id, self.previous_hash, self.chunk_size)
-
-                    record = f"BLOCK#{block_id:03d}|HASH:{block_hash}|VECTORS:{self.chunk_size:,}|BYTES:{byte_size}\n".encode('utf-8')
-                    rec_len = len(record)
-
-                    if mmapped_ledger:
-                        mmapped_ledger[offset : offset + rec_len] = record
-                        offset += rec_len
-                    else:
-                        f.write(record)
-
-                    self.previous_hash = block_hash
-                    self.current_step += self.chunk_size
-
-                if mmapped_ledger:
-                    mmapped_ledger.flush()
-                    mmapped_ledger.close()
-        finally:
-            if executor:
-                try:
-                    executor.shutdown(wait=False)
-                except Exception:
-                    pass
-
-        elapsed = time.perf_counter() - start_time
-        tps = int(self.total_target / elapsed) if elapsed > 0 else 0
-
-        manifest = {
-            "protocol": "SumerAvera 1 Billion Vector Engine v2.4",
-            "execution_metadata": {
-                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                "total_vectors_ingested": self.total_target,
-                "total_blocks_verified": self.verified_blocks,
-                "elapsed_time_seconds": round(elapsed, 4),
-                "throughput_vps": tps,
-                "chaindata_integrity": "VERIFIED_STABLE",
-                "storage_file": self.storage_file
-            },
-            "cryptographic_proof": {
-                "algorithm": "SHA-256 (C-struct stream hash)",
-                "merkle_root_head_hash": self.previous_hash
-            }
-        }
-
-        with open("billion_audit_manifest.json", "w") as f:
-            json.dump(manifest, f, indent=4)
-
-        return {
-            "status": "COMPLETED",
-            "total_vectors": self.total_target,
-            "total_blocks": self.verified_blocks,
-            "elapsed_time_seconds": round(elapsed, 4),
-            "throughput_vps": tps,
-            "final_state_root": self.previous_hash,
-            "manifest": manifest
-        }
-
-async def run_billion_vector_simulation():
-    engine = BillionVectorEngine()
-    return await engine.execute_billion_run()
-
-# ------------------------------------------------------------------------------
 # 1 BILLION VECTOR STREAMING ENGINE (mmap + struct + ProcessPoolExecutor)
 # ------------------------------------------------------------------------------
 BILLION_TARGET = 1_000_000_000  # 1 Billion Vectors
@@ -2405,8 +2282,10 @@ class ProtocolVerificationEngineV24:
         start_time = time.perf_counter()
        
         # 1. Cryptographic Identity Gate
-        sec_key = payload.get("secret_key") or payload.get("signature")
-        if sec_key != VALID_SECRET_KEY:
+        # Use hmac.compare_digest for constant-time comparison to prevent timing
+        # oracle attacks on the secret key comparison.
+        supplied = (payload.get("secret_key") or payload.get("signature") or "")
+        if not supplied or not hmac.compare_digest(supplied.encode("utf-8"), VALID_SECRET_KEY.encode("utf-8")):
             latency = (time.perf_counter() - start_time) * 1000
             return AuditReceipt(
                 status="REJECTED_HONEYPOT",

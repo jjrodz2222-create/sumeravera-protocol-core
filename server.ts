@@ -7,6 +7,8 @@ import { execFile } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 
 // 1. SECRETS & CONFIGURATION: Loaded from environment with secure defaults
 dotenv.config();
@@ -61,6 +63,13 @@ export const isSignatureValid = (payload: string, signature: string): boolean =>
 const app = express();
 const PORT = CONFIG.PORT;
 const httpServer = http.createServer(app);
+
+// Security HTTP headers
+app.use(helmet());
+
+// Rate limiting: tighter on mutation endpoints, looser on reads
+const standardLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+const mutationLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
 
 app.use(express.json());
 
@@ -167,16 +176,16 @@ export class PersistentSettlementNonceStore {
     return this.memorySet.has(nonce);
   }
 
-  public reserveAndCommit(nonce: string, metadata?: Partial<NonceAuditRecord>): boolean {
+  public async reserveAndCommit(nonce: string, metadata?: Partial<NonceAuditRecord>): Promise<boolean> {
     if (this.memorySet.has(nonce)) {
       return false; // Duplicate detected - reject with zero state bleed
     }
     this.memorySet.add(nonce);
-    this.persist(nonce, metadata);
+    await this.persist(nonce, metadata);
     return true;
   }
 
-  private persist(newNonce?: string, metadata?: Partial<NonceAuditRecord>): void {
+  private async persist(newNonce?: string, metadata?: Partial<NonceAuditRecord>): Promise<void> {
     try {
       let storeData: { processed_nonces: string[]; audit_ledger: any[]; last_updated: number } = {
         processed_nonces: Array.from(this.memorySet),
@@ -184,14 +193,13 @@ export class PersistentSettlementNonceStore {
         last_updated: Date.now(),
       };
 
-      if (fs.existsSync(this.filePath)) {
-        try {
-          const existing = JSON.parse(fs.readFileSync(this.filePath, "utf-8"));
-          if (Array.isArray(existing.audit_ledger)) {
-            storeData.audit_ledger = existing.audit_ledger;
-          }
-        } catch (_) {}
-      }
+      try {
+        const raw = await fs.promises.readFile(this.filePath, "utf-8");
+        const existing = JSON.parse(raw);
+        if (Array.isArray(existing.audit_ledger)) {
+          storeData.audit_ledger = existing.audit_ledger;
+        }
+      } catch (_) {}
 
       if (newNonce) {
         storeData.audit_ledger.push({
@@ -206,8 +214,8 @@ export class PersistentSettlementNonceStore {
 
       // Atomic write via temporary file + rename to prevent filesystem race corruption
       const tempPath = `${this.filePath}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      fs.writeFileSync(tempPath, JSON.stringify(storeData, null, 2), "utf-8");
-      fs.renameSync(tempPath, this.filePath);
+      await fs.promises.writeFile(tempPath, JSON.stringify(storeData, null, 2), "utf-8");
+      await fs.promises.rename(tempPath, this.filePath);
     } catch (err) {
       console.error("[PersistentSettlementNonceStore] Persistence error:", err);
     }
@@ -379,16 +387,10 @@ function broadcastIngressEvent(eventData: any) {
 
 wss.on("connection", (ws, req) => {
   // Parse query parameters for authentication
+  // Tokens in URL query strings appear in server logs in plaintext.
+  // All authentication is handled via the message-based "authenticate"
+  // action below so that credentials never touch the URL or server logs.
   let role: WsClientRole = "public";
-  try {
-    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
-    const token = url.searchParams.get("token") || url.searchParams.get("key") || "";
-    if (token === CONFIG.ADMIN_WS_TOKEN) {
-      role = "admin";
-    } else if (token === CONFIG.ZERO_DRIFT_SECRET || token === CONFIG.BIO_SECRET) {
-      role = "authenticated_node";
-    }
-  } catch (_) {}
 
   wsClientRegistry.set(ws, { ws, role, connectedAt: Date.now() });
   console.log(`[WS Live Ingress] Client connected (role: ${role}). Total active clients: ${wsClientRegistry.size}`);
@@ -491,11 +493,13 @@ wss.on("connection", (ws, req) => {
       }
 
       // 2. Verified Ingress: Proceed into Core Kernel Memory
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+      // Use socket.remoteAddress for security; x-forwarded-for only for audit logging
+      const clientIp = req.socket.remoteAddress || "127.0.0.1";
+      const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
       const userAgent = (req.headers["user-agent"] as string) || "WebSocket-Live-Client/1.0";
 
       const requestPayload = {
-        ip: clientIp,
+        ip: auditIp,
         user_agent: userAgent,
         payload: payloadObj,
         timestamp: Date.now() / 1000,
@@ -526,7 +530,7 @@ wss.on("connection", (ws, req) => {
       // Broadcast event to all WebSocket clients (with privacy filtering applied per client role)
       broadcastIngressEvent(ingressEvent);
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: "ERROR", message: "Failed to process ingress message", details: err.message }));
+      ws.send(JSON.stringify({ type: "ERROR", message: "Failed to process ingress message" }));
     }
   });
 
@@ -571,7 +575,7 @@ function runPythonEngine(command: string, ...args: string[]): Promise<any> {
     const pythonPath = "python3";
     const scriptPath = path.join(process.cwd(), "python", "sumeravera_engine.py");
     
-    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }, (error, stdout, stderr) => {
       if (error) {
         console.error(`Python Engine Error [${command}]:`, stderr || error.message);
         return reject(error);
@@ -593,7 +597,7 @@ function runGate1Script(command: string, ...args: string[]): Promise<any> {
     const pythonPath = "python3";
     const scriptPath = path.join(process.cwd(), "python", "gate1_ingress.py");
 
-    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }, (error, stdout, stderr) => {
       if (error) {
         console.error(`Gate 1 Python Error [${command}]:`, stderr || error.message);
         return reject(error);
@@ -624,7 +628,7 @@ app.get(["/api/v1/health", "/api/health"], (req, res) => {
 });
 
 // Live Ingress HTTP Endpoint (/api/v1/ingress)
-app.post("/api/v1/ingress", async (req, res) => {
+app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
   try {
     // 1. Direct Pre-Memory Perimeter Gate 1 Validation
     let gate1Result: any = null;
@@ -687,11 +691,13 @@ app.post("/api/v1/ingress", async (req, res) => {
       return res.status(200).json(batchResult);
     }
 
-    const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+    // Use socket.remoteAddress for security; x-forwarded-for only for audit logging
+    const clientIp = req.socket.remoteAddress || "127.0.0.1";
+    const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
     const userAgent = (req.headers["user-agent"] as string) || "HTTP-Ingress-Client/2.5";
 
     const requestPayload = {
-      ip: clientIp,
+      ip: auditIp,
       user_agent: userAgent,
       payload: req.body,
       header: req.body.header || {
@@ -752,7 +758,7 @@ app.post("/api/v1/ingress", async (req, res) => {
       timestamp: Date.now(),
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Ingress processing failure", details: err.message });
+    res.status(500).json({ error: "Ingress processing failure" });
   }
 });
 
@@ -783,7 +789,7 @@ app.post(["/api/v1/gate1/validate", "/api/gate1/validate"], async (req, res) => 
     const httpCode = validationResult.http_code || (validationResult.status === "QUARANTINE" ? 403 : validationResult.status === "REBALANCING" ? 202 : 200);
     res.status(httpCode).json(validationResult);
   } catch (err: any) {
-    res.status(500).json({ error: "Gate 1 Validator execution failure", details: err.message });
+    res.status(500).json({ error: "Gate 1 Validator execution failure" });
   }
 });
 
@@ -809,7 +815,7 @@ app.post(["/api/v1/gate1/comparative-test", "/api/gate1/comparative-test"], asyn
 
     res.status(200).json(report);
   } catch (err: any) {
-    res.status(500).json({ error: "Comparative Baseline Test execution failure", details: err.message });
+    res.status(500).json({ error: "Comparative Baseline Test execution failure" });
   }
 });
 
@@ -850,20 +856,37 @@ app.post(["/api/v1/gate1/insurance-claim", "/api/gate1/insurance-claim"], async 
       timestamp: Date.now()
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Insurance claim verification failure", details: err.message });
+    res.status(500).json({ error: "Insurance claim verification failure" });
   }
 });
 
 // 4. Sovereign Trust Settlement & Fraud Interception Endpoint (/api/v1/settlement/process)
-app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, res) => {
+app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimiter, async (req, res) => {
   try {
     const claimId = req.body.claim_id || `CLAIM-${Date.now()}`;
     const claimedAmount = Number(req.body.claimed_amount ?? req.body.billed_amount ?? 100000.0);
-    const anomalyIndex = Number(req.body.anomaly_index ?? 890);
     const extractionRate = Number(req.body.extraction_rate ?? 0.05);
-    const nonce = req.body.nonce || `${claimId}:${claimedAmount}`;
+    // Nonce: use caller-supplied value only for idempotent retries; never derive it
+    // from mutable claim data so that re-submissions don't silently collide.
+    const nonce = req.body.nonce || crypto.randomUUID();
 
-    if (!settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount })) {
+    // Run Gate 1 to compute the server-side anomaly score — never trust the client.
+    let gate1Result: any = null;
+    try {
+      gate1Result = await runGate1Script("validate", JSON.stringify(req.body));
+    } catch (g1Err) {
+      console.error("Gate 1 unavailable in settlement — failing closed:", g1Err);
+      return res.status(503).json({
+        status: "GATE_1_UNAVAILABLE",
+        http_code: 503,
+        state_bleed: 0.00,
+        message: "Gate 1 validation service is unavailable. Settlement rejected to preserve perimeter integrity.",
+        timestamp: Date.now(),
+      });
+    }
+    const anomalyIndex = Number(gate1Result?.anomaly_index ?? 0);
+
+    if (!await settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount })) {
       return res.status(409).json({
         status: "REJECTED_DUPLICATE_CLAIM",
         error: "ERR_DUPLICATE_CLAIM_NONCE",
@@ -953,12 +976,12 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, 
       timestamp: Date.now()
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Settlement processing failure", details: err.message });
+    res.status(500).json({ error: "Settlement processing failure" });
   }
 });
 
 // 5. Sovereign Trust Batch Settlement Endpoint (/api/v1/settlement/batch)
-app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res) => {
+app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], mutationLimiter, async (req, res) => {
   try {
     const claims = Array.isArray(req.body.claims) ? req.body.claims : [];
     if (claims.length === 0) {
@@ -975,11 +998,16 @@ app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res)
     for (const claim of claims) {
       const claimId = claim.claim_id || `CLAIM-${Date.now()}-${results.length}`;
       const claimedAmount = Number(claim.claimed_amount ?? claim.billed_amount ?? 0);
-      const anomalyIndex = Number(claim.anomaly_index ?? 0);
+      // anomaly_index is NOT accepted from client; default to 0 (straight-through).
+      // Callers that require fraud detection on batch claims must pre-validate each
+      // claim against the Gate 1 endpoint and submit only clean claims here.
+      const anomalyIndex = 0;
       const extractionRate = Number(claim.extraction_rate ?? 0.05);
-      const nonce = claim.nonce || `${claimId}:${claimedAmount}`;
+      // Use caller-supplied nonce for idempotent retries; fall back to a UUID to
+      // prevent silent collision when the same claim is resubmitted without a nonce.
+      const nonce = claim.nonce || crypto.randomUUID();
 
-      if (!settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount })) {
+      if (!await settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount })) {
         const dupResult = {
           status: "REJECTED_DUPLICATE_CLAIM",
           error: "ERR_DUPLICATE_CLAIM_NONCE",
@@ -1082,7 +1110,7 @@ app.post(["/api/v1/settlement/batch", "/api/settlement/batch"], async (req, res)
       results
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Batch settlement processing failure", details: err.message });
+    res.status(500).json({ error: "Batch settlement processing failure" });
   }
 });
 
@@ -1096,7 +1124,7 @@ app.get("/api/v1/manifest", async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.json(manifestData);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to retrieve manifest", details: err.message });
+    res.status(500).json({ error: "Failed to retrieve manifest" });
   }
 });
 
@@ -1115,7 +1143,7 @@ app.post("/api/v1/run-million", async (req, res) => {
     });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to execute 1,000,000 vector ingestion", details: err.message });
+    res.status(500).json({ error: "Failed to execute 1,000,000 vector ingestion" });
   }
 });
 
@@ -1135,7 +1163,7 @@ app.post("/api/v1/run-billion", async (req, res) => {
     });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to execute 1,000,000,000 vector streaming burst", details: err.message });
+    res.status(500).json({ error: "Failed to execute 1,000,000,000 vector streaming burst" });
   }
 });
 
@@ -1157,7 +1185,7 @@ app.post("/api/v1/seal-block", async (req, res) => {
     });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to seal block state", details: err.message });
+    res.status(500).json({ error: "Failed to seal block state" });
   }
 });
 
@@ -1184,7 +1212,7 @@ app.post("/api/v1/biometric-vault/authorize", async (req, res) => {
       res.json(result);
     }
   } catch (err: any) {
-    res.status(500).json({ error: "Biometric Trust Vault execution failed", details: err.message });
+    res.status(500).json({ error: "Biometric Trust Vault execution failed" });
   }
 });
 
@@ -1205,7 +1233,7 @@ app.post("/api/v1/sentinel/validate", async (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Sentinel validation failed", details: err.message });
+    res.status(500).json({ error: "Sentinel validation failed" });
   }
 });
 
@@ -1226,7 +1254,7 @@ app.post("/api/v1/adaptive-protocol/evaluate", async (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Adaptive Protocol evaluation failed", details: err.message });
+    res.status(500).json({ error: "Adaptive Protocol evaluation failed" });
   }
 });
 
@@ -1247,7 +1275,7 @@ app.post("/api/v1/signal-beacon/pulse", async (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Signal Beacon pulse failed", details: err.message });
+    res.status(500).json({ error: "Signal Beacon pulse failed" });
   }
 });
 
@@ -1297,7 +1325,7 @@ const processIntentHandler = async (req: express.Request, res: express.Response)
       timestamp: Date.now(),
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Intent ingress processing failure", details: err.message });
+    res.status(500).json({ error: "Intent ingress processing failure" });
   }
 };
 
@@ -1310,7 +1338,7 @@ app.post("/api/balancer/rebalance", async (req, res) => {
     const result = await runPythonEngine("equalizer_pulse");
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to execute equalizer pulse", details: err.message });
+    res.status(500).json({ error: "Failed to execute equalizer pulse" });
   }
 });
 
@@ -1320,7 +1348,7 @@ app.post("/api/tla/stress-test", async (req, res) => {
     const result = await runPythonEngine("run_tla_stress_test", JSON.stringify({ steps }));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to execute TLA+ stress test", details: err.message });
+    res.status(500).json({ error: "Failed to execute TLA+ stress test" });
   }
 });
 
@@ -1329,7 +1357,7 @@ app.post("/api/balancer/config", async (req, res) => {
     const result = await runPythonEngine("update_balancer", JSON.stringify(req.body));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to update balancer configuration", details: err.message });
+    res.status(500).json({ error: "Failed to update balancer configuration" });
   }
 });
 
@@ -1375,7 +1403,7 @@ app.post(["/api/v1/edge/handshake", "/api/edge/handshake"], async (req, res) => 
       timestamp: Date.now(),
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Handshake negotiation failed", details: err.message });
+    res.status(500).json({ error: "Handshake negotiation failed" });
   }
 });
 
@@ -1429,7 +1457,7 @@ app.post(
 
       res.status(200).json(transitionResponse);
     } catch (err: any) {
-      res.status(500).json({ error: "Edge listener transition processing error", details: err.message });
+      res.status(500).json({ error: "Edge listener transition processing error" });
     }
   }
 );
@@ -1462,7 +1490,7 @@ const getSystemStatusHandler = async (req: express.Request, res: express.Respons
     const status = await runPythonEngine("status");
     res.json(status);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to fetch status from Python Core Kernel", details: err.message });
+    res.status(500).json({ error: "Failed to fetch status from Python Core Kernel" });
   }
 };
 
@@ -1477,7 +1505,7 @@ const getHistoryHandler = async (req: express.Request, res: express.Response) =>
     const result = await runPythonEngine("history", period);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to fetch historical trends", details: err.message });
+    res.status(500).json({ error: "Failed to fetch historical trends" });
   }
 };
 
@@ -1491,7 +1519,7 @@ app.post("/api/step", async (req, res) => {
     const result = await runPythonEngine("step", dt);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to step differential engine", details: err.message });
+    res.status(500).json({ error: "Failed to step differential engine" });
   }
 });
 
@@ -1511,7 +1539,7 @@ app.post("/api/gateway/request", async (req, res) => {
     const result = await runPythonEngine("process_request", JSON.stringify(requestPayload));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Adaptive Gateway processing error", details: err.message });
+    res.status(500).json({ error: "Adaptive Gateway processing error" });
   }
 });
 
@@ -1522,7 +1550,7 @@ app.post("/api/gateway/simulate-attack", async (req, res) => {
     const result = await runPythonEngine("simulate_attack", attackType);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to run threat simulation", details: err.message });
+    res.status(500).json({ error: "Failed to run threat simulation" });
   }
 });
 
@@ -1534,7 +1562,7 @@ app.post("/api/stress-test", async (req, res) => {
     const metrics = await runPythonEngine("benchmark", totalRequests, batchSize);
     res.json(metrics);
   } catch (err: any) {
-    res.status(500).json({ error: "Stress test execution failure", details: err.message });
+    res.status(500).json({ error: "Stress test execution failure" });
   }
 });
 
@@ -1546,7 +1574,7 @@ const getSecurityReportHandler = async (req: express.Request, res: express.Respo
     const report = await runPythonEngine("security_report", targetT);
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to generate security report", details: err.message });
+    res.status(500).json({ error: "Failed to generate security report" });
   }
 };
 
@@ -1561,7 +1589,7 @@ app.get("/api/v1/security-report/export", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="sumeravera_security_milestone_report_T${targetT}.json"`);
     res.send(JSON.stringify(report, null, 2));
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to export security report file", details: err.message });
+    res.status(500).json({ error: "Failed to export security report file" });
   }
 });
 
@@ -1571,7 +1599,7 @@ app.post("/api/reset", async (req, res) => {
     const result = await runPythonEngine("reset");
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to reset system state", details: err.message });
+    res.status(500).json({ error: "Failed to reset system state" });
   }
 });
 
