@@ -199,7 +199,7 @@ Runs a standalone throughput benchmark of the Python mathematical engines withou
 
 ## Testing
 
-The test suite is located in `test/invariants.test.mjs` and exercises production classes exported from `src/server.ts`.
+The test suite is located in `test/invariants.test.mjs` and exercises production classes exported from `server.ts` (the runtime entrypoint).
 
 ```bash
 npm test
