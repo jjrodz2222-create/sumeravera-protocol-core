@@ -150,7 +150,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The container exposes port **3000** (HTTP / dashboard) and **8080** (WebSocket ingress).
+The container exposes port **3000** (HTTP / dashboard and WebSocket ingress).
 
 ---
 
@@ -185,15 +185,15 @@ Runs a standalone throughput benchmark of the Python mathematical engines withou
 |--------|------|-------------|
 | `GET`  | `/api/v1/health` | Liveness check |
 | `POST` | `/api/v1/ingress` | Submit a signed ingress payload |
-| `GET`  | `/api/v1/settlement/merkle-proof/:claimId` | Fetch Merkle inclusion proof |
-| `GET`  | `/api/v1/ledger/state` | Current homeostatic engine state |
+| `POST` | `/api/v1/settlement/process` | Process a claim settlement (includes Gate 1 scoring) |
+| `GET`  | `/api/v1/settlement/proof/:claimId` | Fetch Merkle inclusion proof for a claim |
 | `WS`   | `/ws/ingress` | Real-time ingress event stream |
 
 ---
 
 ## Testing
 
-The test suite is located in `test/invariants.test.mjs` and exercises production classes exported from `src/server.ts`.
+The test suite is located in `test/invariants.test.mjs` and exercises production classes exported from `server.ts` (the runtime entrypoint).
 
 ```bash
 npm test
@@ -242,7 +242,7 @@ Copy `.env.example` to `.env` and customise the values below. **Never commit rea
 | `ENABLE_HONEYPOT_DIVERSION` | Route anomalous payloads to honeypot subsystem | `true` |
 | `STATE_LEDGER_ENFORCE_INVARIANTS` | Enforce protocol invariants at runtime | `true` |
 | `GEMINI_API_KEY` | Google Gemini API key (AI-assisted analysis) | — |
-| `PSEUDONYMIZATION_SALT` | Salt for pseudonymisation operations | insecure dev default |
+| `SUMER_SALT` | Salt for pseudonymisation operations | insecure dev default |
 
 All secret variables must be at least **16 characters** long. The server performs a startup type-guard check and refuses to start if required secrets are malformed.
 
