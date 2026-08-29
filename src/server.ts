@@ -7,6 +7,8 @@ import { execFile } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 
 dotenv.config();
 
@@ -163,14 +165,14 @@ export function verifyCryptographicHmac(
     return false;
   }
 
-  const candidateKeys = [
+  const candidateKeys = [...new Set([
     CONFIG.SECRET_KEY,
     CONFIG.ZERO_DRIFT_SECRET,
     CONFIG.BIO_SECRET,
     CONFIG.ENERGY_SECRET,
     CONFIG.ART_SECRET,
     CONFIG.MASTER_HMAC_KEY,
-  ];
+  ])];
 
   const payloadVariations: string[] = [serializedPayload];
   try {
@@ -211,6 +213,10 @@ export class RobustSettlementWALStore {
   private walPath: string;
   private legacyStorePath: string;
   private activeNonceMap = new Map<string, number>(); // Nonce -> Timestamp
+  // Nonces that were accepted in-memory but whose WAL write failed.  They are
+  // kept here so that retries during a persistent storage outage are still
+  // rejected, preventing the same nonce from being committed multiple times.
+  private walFailedNonces = new Set<string>();
   private mutex = new TypedAsyncMutex();
 
   constructor(walPath: string, legacyStorePath: string) {
@@ -226,9 +232,8 @@ export class RobustSettlementWALStore {
         fs.mkdirSync(walDir, { recursive: true });
       }
 
-      const cutoff = Date.now() - CONFIG.NONCE_TTL_MS;
-
-      // 1. Replay from WAL if exists
+      // 1. Replay from WAL if exists — load ALL entries; no TTL expiry so
+      //    idempotency holds unconditionally across restarts.
       if (fs.existsSync(this.walPath)) {
         const content = fs.readFileSync(this.walPath, "utf-8");
         const lines = content.split("\n");
@@ -236,8 +241,8 @@ export class RobustSettlementWALStore {
           if (!line.trim()) continue;
           try {
             const entry = JSON.parse(line);
-            if (entry.nonce && entry.timestamp >= cutoff) {
-              this.activeNonceMap.set(entry.nonce, entry.timestamp);
+            if (entry.nonce) {
+              this.activeNonceMap.set(entry.nonce, entry.timestamp ?? Date.now());
             }
           } catch (_) {}
         }
@@ -264,17 +269,17 @@ export class RobustSettlementWALStore {
   }
 
   public has(nonce: string): boolean {
-    const timestamp = this.activeNonceMap.get(nonce);
-    if (!timestamp) return false;
-    if (Date.now() - timestamp > CONFIG.NONCE_TTL_MS) {
-      this.activeNonceMap.delete(nonce);
-      return false;
-    }
-    return true;
+    // Nonces never expire — idempotency must hold for the lifetime of the store.
+    // A nonce that failed to persist to the WAL is also treated as "seen" so
+    // that retries during a storage outage do not re-accept it in-memory.
+    return this.activeNonceMap.has(nonce) || this.walFailedNonces.has(nonce);
   }
 
   /**
    * Reserves and commits a settlement nonce using strict generic mutex locks.
+   * Fail-closed: if the WAL write fails the in-memory entry is moved to the
+   * walFailedNonces set so that any subsequent retry during the same outage is
+   * also rejected, preserving idempotency even when storage is unavailable.
    */
   public async reserveAndCommit(nonce: string, metadata?: Partial<NonceAuditRecord>): Promise<boolean> {
     return this.mutex.lock<boolean>(async () => {
@@ -295,8 +300,33 @@ export class RobustSettlementWALStore {
         await fs.promises.appendFile(this.walPath, walEntry, "utf-8");
         return true;
       } catch (err) {
-        console.error("[RobustSettlementWALStore] WAL append error:", err);
-        return true;
+        // Move to the failed set so that retries during a WAL outage are
+        // rejected rather than re-accepted, preserving idempotency.
+        this.activeNonceMap.delete(nonce);
+        this.walFailedNonces.add(nonce);
+        console.error("[RobustSettlementWALStore] WAL append error — nonce moved to failed set:", err);
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Rewrites the WAL file from the current in-memory nonce map.
+   * Reduces unbounded file growth by discarding the raw append-only lines and
+   * replacing them with one canonical line per nonce.  Called periodically via
+   * setInterval so compaction is transparent and non-blocking.
+   */
+  public async compact(): Promise<void> {
+    return this.mutex.lock<void>(async () => {
+      try {
+        const lines = Array.from(this.activeNonceMap.entries())
+          .map(([nonce, timestamp]) => JSON.stringify({ nonce, timestamp }))
+          .join("\n") + "\n";
+        const tempPath = `${this.walPath}.compact.${Date.now()}`;
+        await fs.promises.writeFile(tempPath, lines, "utf-8");
+        await fs.promises.rename(tempPath, this.walPath);
+      } catch (err) {
+        console.error("[RobustSettlementWALStore] WAL compaction error:", err);
       }
     });
   }
@@ -516,7 +546,7 @@ function runPythonEngine(command: string, ...args: string[]): Promise<any> {
     const pythonPath = "python3";
     const scriptPath = path.join(process.cwd(), "python", "sumeravera_engine.py");
 
-    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }, (error, stdout, stderr) => {
       if (error) {
         console.error(`Python Engine Error [${command}]:`, stderr || error.message);
         return reject(error);
@@ -537,7 +567,7 @@ function runGate1Script(command: string, ...args: string[]): Promise<any> {
     const pythonPath = "python3";
     const scriptPath = path.join(process.cwd(), "python", "gate1_ingress.py");
 
-    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(pythonPath, [scriptPath, command, ...args], { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }, (error, stdout, stderr) => {
       if (error) {
         console.error(`Gate 1 Python Error [${command}]:`, stderr || error.message);
         return reject(error);
@@ -557,6 +587,14 @@ const app = express();
 const PORT = CONFIG.PORT;
 const httpServer = http.createServer(app);
 
+// Security HTTP headers
+app.use(helmet());
+
+// Rate limiting: standardLimiter applied globally; mutationLimiter overrides on write endpoints
+const standardLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+const mutationLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+
+app.use(standardLimiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(formalInvariantGuard);
 
@@ -583,13 +621,22 @@ app.get(["/api/v1/health", "/api/health"], (req, res) => {
 });
 
 // Live Ingress HTTP Endpoint (/api/v1/ingress)
-app.post("/api/v1/ingress", async (req, res) => {
+app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
   try {
     let gate1Result: any = null;
     try {
       gate1Result = await runGate1Script("validate", JSON.stringify(req.body));
     } catch (g1Err) {
-      console.warn("Gate 1 validation fallback on HTTP ingress:", g1Err);
+      // Gate 1 is unavailable — fail closed: quarantine the request rather than
+      // letting it proceed to the core engine without validation.
+      console.error("Gate 1 validation unavailable on HTTP ingress — failing closed:", g1Err);
+      return res.status(503).json({
+        status: "GATE_1_UNAVAILABLE",
+        http_code: 503,
+        state_bleed: 0.0,
+        message: "Gate 1 ingress validation service is unavailable. Request rejected to preserve perimeter integrity.",
+        timestamp: Date.now(),
+      });
     }
 
     if (gate1Result && gate1Result.status === "QUARANTINE") {
@@ -626,11 +673,13 @@ app.post("/api/v1/ingress", async (req, res) => {
       });
     }
 
-    const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+    // Use socket.remoteAddress for security; x-forwarded-for only for audit logging
+    const clientIp = req.socket.remoteAddress || "127.0.0.1";
+    const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
     const userAgent = (req.headers["user-agent"] as string) || "HTTP-Ingress-Client/2.5";
 
     const requestPayload = {
-      ip: clientIp,
+      ip: auditIp,
       user_agent: userAgent,
       payload: req.body,
       header: req.body.header || {
@@ -682,18 +731,36 @@ app.post("/api/v1/ingress", async (req, res) => {
       timestamp: Date.now(),
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Ingress processing failure", details: err.message });
+    console.error("Ingress processing error:", err);
+    res.status(500).json({ error: "Ingress processing failure" });
   }
 });
 
 // Sovereign Trust Settlement & Fraud Interception Endpoint (/api/v1/settlement/process)
-app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, res) => {
+app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimiter, async (req, res) => {
   try {
     const claimId = req.body.claim_id || `CLAIM-${Date.now()}`;
     const claimedAmount = Number(req.body.claimed_amount ?? req.body.billed_amount ?? 100000.0);
-    const anomalyIndex = Number(req.body.anomaly_index ?? 890);
     const extractionRate = Number(req.body.extraction_rate ?? 0.05);
-    const nonce = req.body.nonce || `${claimId}:${claimedAmount}`;
+    // Nonce: use caller-supplied value only for idempotent retries; never derive it
+    // from mutable claim data so that re-submissions don't silently collide.
+    const nonce = req.body.nonce || crypto.randomUUID();
+
+    // Run Gate 1 to compute the server-side anomaly score — never trust the client.
+    let gate1Result: any = null;
+    try {
+      gate1Result = await runGate1Script("validate", JSON.stringify(req.body));
+    } catch (g1Err) {
+      console.error("Gate 1 unavailable in settlement — failing closed:", g1Err);
+      return res.status(503).json({
+        status: "GATE_1_UNAVAILABLE",
+        http_code: 503,
+        state_bleed: 0.0,
+        message: "Gate 1 validation service is unavailable. Settlement rejected to preserve perimeter integrity.",
+        timestamp: Date.now(),
+      });
+    }
+    const anomalyIndex = Number(gate1Result?.anomaly_index ?? 0);
 
     const isCommitted = await settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount });
     if (!isCommitted) {
@@ -787,7 +854,8 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], async (req, 
       timestamp: Date.now(),
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Settlement processing failure", details: err.message });
+    console.error("Settlement processing error:", err);
+    res.status(500).json({ error: "Settlement processing failure" });
   }
 });
 
@@ -801,7 +869,8 @@ app.get("/api/v1/settlement/proof/:claimId", (req, res) => {
     const proof = MerkleTreeProofEngine.generateProof(epochTransactions, claimId);
     res.status(200).json(proof);
   } catch (err: any) {
-    res.status(404).json({ error: "Proof generation failed", message: err.message });
+    console.error("Proof generation error:", err);
+    res.status(404).json({ error: "Proof generation failed" });
   }
 });
 
@@ -815,7 +884,8 @@ app.post("/api/v1/settlement/verify-proof", (req, res) => {
     const isValid = MerkleTreeProofEngine.verifyProof(leaf_hash, audit_path, merkle_root);
     res.status(200).json({ verified: isValid, leaf_hash, merkle_root, timestamp: Date.now() });
   } catch (err: any) {
-    res.status(500).json({ error: "Proof verification error", message: err.message });
+    console.error("Proof verification error:", err);
+    res.status(500).json({ error: "Proof verification error" });
   }
 });
 
@@ -836,16 +906,10 @@ httpServer.on("upgrade", (request, socket, head) => {
 });
 
 wss.on("connection", (ws, req) => {
+  // Tokens in URL query strings appear in server logs in plaintext.
+  // All authentication is handled via the message-based "authenticate"
+  // action below so that credentials never touch the URL or server logs.
   let role: WsClientRole = "public";
-  try {
-    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
-    const token = url.searchParams.get("token") || url.searchParams.get("key") || "";
-    if (token === CONFIG.ADMIN_WS_TOKEN) {
-      role = "admin";
-    } else if (token === CONFIG.ZERO_DRIFT_SECRET || token === CONFIG.BIO_SECRET) {
-      role = "authenticated_node";
-    }
-  } catch (_) {}
 
   wsClientRegistry.set(ws, { ws, role, connectedAt: Date.now() });
 
@@ -898,7 +962,17 @@ wss.on("connection", (ws, req) => {
       try {
         gate1Result = await runGate1Script("validate", JSON.stringify(body.payload || body));
       } catch (g1Err) {
-        console.warn("Gate 1 validation fallback:", g1Err);
+        // Gate 1 is unavailable — fail closed: quarantine the request rather than
+        // letting it proceed to the core engine without validation.
+        console.error("Gate 1 validation unavailable on WebSocket ingress — failing closed:", g1Err);
+        ws.send(JSON.stringify({
+          type: "GATE1_UNAVAILABLE",
+          status: "GATE_1_UNAVAILABLE",
+          state_bleed: 0.0,
+          message: "Gate 1 ingress validation service is unavailable. Request rejected to preserve perimeter integrity.",
+          timestamp: Date.now(),
+        }));
+        return;
       }
 
       const payloadObj = body.payload || body;
@@ -939,9 +1013,11 @@ wss.on("connection", (ws, req) => {
         return;
       }
 
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+      // Use socket address for security; x-forwarded-for only for audit logging
+      const clientIp = req.socket.remoteAddress || "127.0.0.1";
+      const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
       const requestPayload = {
-        ip: clientIp,
+        ip: auditIp,
         user_agent: (req.headers["user-agent"] as string) || "WebSocket-Live-Client/1.0",
         payload: payloadObj,
         timestamp: Date.now() / 1000,
@@ -969,7 +1045,8 @@ wss.on("connection", (ws, req) => {
 
       broadcastIngressEvent(ingressEvent);
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: "ERROR", message: "Failed to process ingress message", details: err.message }));
+      console.error("WS ingress processing error:", err);
+      ws.send(JSON.stringify({ type: "ERROR", message: "Failed to process ingress message" }));
     }
   });
 
@@ -995,6 +1072,8 @@ export async function startServer() {
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`[SumerAvera Protocol Core] Gateway running on http://0.0.0.0:${PORT}`);
+    // Compact WAL every 6 hours to prevent unbounded file growth
+    setInterval(() => { settlementNonceStore.compact().catch(console.error); }, 6 * 60 * 60 * 1000);
   });
 }
 
