@@ -82,9 +82,11 @@ Every ingress payload receives an **anomaly index** (0–1000). Routing is deter
 
 | Anomaly Index | Tier | Disposition                  |
 |---------------|------|------------------------------|
-| 0 – 249       | 1    | `STRAIGHT_THROUGH_PROCESSED` |
-| 250 – 750     | 2    | `GATE_1_HEURISTIC_ESCROW`    |
+| 0 – 499       | 1    | `STRAIGHT_THROUGH_PROCESSED` |
+| 500 – 750     | 2    | `GATE_1_HEURISTIC_ESCROW`    |
 | 751 – 1000    | 3    | `GATE_1_ISOLATED` (quarantine) |
+
+> **Note:** The Python ingress agent (`gate1_ingress.py`) uses a lower STP ceiling of ≤250 before promoting a payload to rebalancing; the TypeScript settlement layer and the test suite use ≥500 as the Escrow threshold. Both layers treat >750 as hard quarantine.
 
 Tier-3 quarantined payloads have `state_bleed = 0.0` enforced — they produce no state mutation.
 
@@ -150,7 +152,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The container exposes port **3000** (HTTP / dashboard) and **8080** (WebSocket ingress).
+The container exposes port **3000** for both HTTP/dashboard and WebSocket ingress (`/ws/ingress`).
 
 ---
 
@@ -162,7 +164,8 @@ The container exposes port **3000** (HTTP / dashboard) and **8080** (WebSocket i
 npm run dev
 ```
 
-Opens the React dashboard (via Vite) and starts the Express API with hot-reload at `http://localhost:3000`.
+Starts the Express API and embedded Vite dev server (with hot-reload) at `http://localhost:3000`.
+`npm run dev` runs `tsx src/server.ts`; the server creates a Vite middleware internally when `NODE_ENV` is not `production`.
 
 ### Production build
 
@@ -185,9 +188,12 @@ Runs a standalone throughput benchmark of the Python mathematical engines withou
 |--------|------|-------------|
 | `GET`  | `/api/v1/health` | Liveness check |
 | `POST` | `/api/v1/ingress` | Submit a signed ingress payload |
-| `GET`  | `/api/v1/settlement/merkle-proof/:claimId` | Fetch Merkle inclusion proof |
-| `GET`  | `/api/v1/ledger/state` | Current homeostatic engine state |
-| `WS`   | `/ws/ingress` | Real-time ingress event stream |
+| `GET`  | `/api/v1/ingress/stats` | Live ingress counters and routing summary |
+| `POST` | `/api/v1/gate1/validate` | Directly invoke the Gate 1 ingress validator |
+| `POST` | `/api/v1/settlement/process` | Process a single settlement claim (fraud-intercepted or STP) |
+| `POST` | `/api/v1/settlement/batch` | Process a batch settlement epoch and return Merkle root |
+| `GET`  | `/api/v1/manifest` | Download the audit manifest |
+| `WS`   | `/ws/ingress` | Real-time ingress event stream (same port as HTTP) |
 
 ---
 
@@ -203,16 +209,16 @@ npm test
 
 | Test | Invariant |
 |------|-----------|
-| Carrying-capacity bounds | `E_floor ≤ E(t) ≤ E_capacity` and numeric bounds guard |
-| Quintet node equilibrium | Five-node resource vector values within [0, 100] |
+| Carrying-capacity bounds | `E_floor ≤ E(t) ≤ E_capacity` and claim-amount numeric bounds guard (`[0, 1 000 000]`) |
+| Quintet node equilibrium | Five-node resource vector values within `[0, 100]` |
 | SHA-256 ledger chain validity | Hash-linking correctness, digest length |
-| Zero state bleed on quarantine | `state_bleed = 0.0` on quarantined / fraud-intercepted payloads |
-| Three-tier routing thresholds | Boundary values at 250 and 750 |
+| Zero state bleed on quarantine | `state_bleed = 0.0` on `QUARANTINE` / `FRAUD_INTERCEPTED` / `GATE_1_ISOLATED` responses |
+| Three-tier routing thresholds | Boundary values at 750 (quarantine) and 500 (escrow) in the TypeScript settlement layer |
 | Nonce idempotency & replay defence | `RobustSettlementWALStore` rejects duplicate nonces |
-| Merkle root determinism | Same leaf set → same root; tampered root fails verification |
+| Merkle root determinism | Same leaf set → same root; inclusion proof round-trips; tampered root fails |
 | Capital preservation (synthetic fraud) | Anomaly index > 750 → 100% capital quarantined |
 | Sovereign Trust extraction split | 5% extraction fee, 95% net carrier savings |
-| STP / Escrow / Hard-intercept policy tiers | Three-tier disposition routing |
+| STP / Escrow / Hard-intercept policy tiers | Three-tier disposition routing (STRAIGHT_THROUGH / HEURISTIC_ESCROW / GATE_1_ISOLATED) |
 
 ```bash
 # Lint (TypeScript type-check)
@@ -231,18 +237,20 @@ Copy `.env.example` to `.env` and customise the values below. **Never commit rea
 | Variable | Description | Default (dev only) |
 |----------|-------------|-------------------|
 | `PORT` | HTTP server port | `3000` |
+| `PROTOCOL_VERSION` | Protocol version tag | `2.5.0` |
 | `SECURE_ZERO_DRIFT_SECRET_KEY` | Primary HMAC signing key | insecure dev default |
+| `SUMER_SECRET_ZERO_DRIFT` | Alias for `SECURE_ZERO_DRIFT_SECRET_KEY` | insecure dev default |
 | `SUMER_HMAC_MASTER_KEY` | Master HMAC key for inter-node auth | insecure dev default |
 | `SUMER_ADMIN_WS_TOKEN` | Admin WebSocket authentication token | insecure dev default |
 | `SUMER_SECRET_BIO` | Bio-node signing secret | insecure dev default |
 | `SUMER_SECRET_ENERGY` | Energy-node signing secret | insecure dev default |
 | `SUMER_SECRET_ART` | Art-node signing secret | insecure dev default |
-| `SETTLEMENT_STORE_PATH` | Path to persistent settlement JSON store | `./python/settlement_store.json` |
-| `WAL_LOG_PATH` | Path to Write-Ahead Log file | `./python/settlement_wal.log` |
+| `SUMER_SECRET_GAIA` | Gaia-node signing secret (Python agents) | insecure dev default |
+| `SETTLEMENT_STORE_PATH` | Path to persistent settlement JSON store (WAL path is derived from this) | `./python/settlement_store.json` |
 | `ENABLE_HONEYPOT_DIVERSION` | Route anomalous payloads to honeypot subsystem | `true` |
 | `STATE_LEDGER_ENFORCE_INVARIANTS` | Enforce protocol invariants at runtime | `true` |
 | `GEMINI_API_KEY` | Google Gemini API key (AI-assisted analysis) | — |
-| `PSEUDONYMIZATION_SALT` | Salt for pseudonymisation operations | insecure dev default |
+| `APP_URL` | Hosted service URL (used for self-referential links) | — |
 
 All secret variables must be at least **16 characters** long. The server performs a startup type-guard check and refuses to start if required secrets are malformed.
 
