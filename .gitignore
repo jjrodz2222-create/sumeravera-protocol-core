@@ -8,3 +8,12 @@ coverage/
 !.env.example
 __pycache__/
 *.pyc
+
+# Android / Gradle
+.gradle/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+*.apk
+*.aab
