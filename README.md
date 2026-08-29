@@ -1,34 +1,271 @@
-# SumerAvera Protocol Core (v2.5.0)
+# SumerAvera Protocol Core
 
-> **Mathematically proven, deterministic state verification designed for ultra-low compute overhead in decentralized systems.**
+> **Homeostatic multi-agent state-verification framework with deterministic ingress interception, cryptographic settlement, and a real-time monitoring dashboard.**
 
----
-
-### The Core Problem
-Conventional distributed networks suffer from compounding state bloat, massive logging redundancy, and heavy payload transfers that demand centralized server clusters.
-
-### The SumerAvera Solution
-SumerAvera eliminates payload bloat by replacing standard historical transaction chains with a lightweight, deterministic mathematical state accumulator. Nodes verify state transitions locally with zero redundant storage overhead.
+[![CI](https://github.com/jjrodz2222-create/sumeravera-protocol-core/actions/workflows/verify.yml/badge.svg)](https://github.com/jjrodz2222-create/sumeravera-protocol-core/actions/workflows/verify.yml)
 
 ---
 
-### Key Capabilities
-* **Deterministic Consensus:** Mathematical state reduction ensures consistent state across distributed nodes without heavy gossip overhead.
-* **Minimal Compute Footprint:** Operates efficiently on low-power, edge, and standard developer hardware.
-* **Zero Dependency Core:** Designed for high throughput and straightforward integration.
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Key Concepts](#key-concepts)
+4. [Setup](#setup)
+5. [Usage](#usage)
+6. [Testing](#testing)
+7. [Configuration](#configuration)
+8. [Security Considerations](#security-considerations)
+9. [Contributing](#contributing)
 
 ---
 
-### Quick Start & Verification
+## Overview
 
-Clone and test the core verification directly:
+SumerAvera Protocol Core is a full-stack framework that combines a **TypeScript/Node.js** backend engine with **Python** mathematical sub-agents and a **React** real-time dashboard. Together they implement:
+
+- **Gate 1 Ingress Interception** — cryptographically authenticated payload routing with anomaly-indexed three-tier disposition (Stable → Rebalancing → Quarantine).
+- **Homeostatic Engine** — a Lotka-Volterra-inspired equilibrium model that tracks a five-node resource vector (`bio`, `art`, `spirit`, `water`, `energy`) and enforces capacity bounds.
+- **Deterministic Settlement** — nonce-idempotent claim processing backed by a Write-Ahead Log (WAL) and a Merkle-tree proof engine for O(log N) state verification.
+- **SHA-256 State Ledger** — an append-only, hash-chained ledger that records every state transition for immutable audit.
+- **Truth Verification Engine** — a formal TLA⁺-inspired specification layer that inspects proof records against protocol invariants.
+
+The framework is designed for research, simulation, and protocol validation workloads.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     React Dashboard (Vite)                   │
+│  HomeostaticEngineView · Gate1IngressEngineView              │
+│  SHA256LedgerExplorer · TruthVerificationConsole             │
+│  SecurityReportView · HistoricalTrendsView · SystemLogs      │
+└────────────────────────┬────────────────────────────────────┘
+                         │ HTTP + WebSocket
+┌────────────────────────▼────────────────────────────────────┐
+│               TypeScript / Node.js Core Server               │
+│  • Express REST API (/api/v1/*)                              │
+│  • WebSocket ingress stream (/ws/ingress)                    │
+│  • RobustSettlementWALStore  (nonce deduplication + WAL)     │
+│  • MerkleTreeProofEngine     (inclusion proofs)              │
+│  • verifyCryptographicHmac   (HMAC-SHA256 auth)              │
+│  • formalInvariantGuard      (request/response middleware)   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ execFile / child_process
+┌────────────────────────▼────────────────────────────────────┐
+│                   Python Mathematical Agents                  │
+│  gate1_ingress.py      – ingress validation & routing        │
+│  sumeravera_engine.py  – homeostatic equilibrium model       │
+│  settlement_engine.py  – SHA-256 ledger & settlement         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Key Concepts
+
+### Carrying-Capacity Bounds Enforcement
+
+The active resource vector **E(t)** is bounded:
+
+```
+E_floor ≤ E(t) ≤ E_capacity
+```
+
+If a submitted delta would breach `E_capacity`, the engine activates backpressure (throttling / rejection) to protect state integrity.
+
+### Three-Tier Anomaly Routing
+
+Every ingress payload receives an **anomaly index** (0–1000). Routing is deterministic:
+
+| Anomaly Index | Tier | Disposition                  |
+|---------------|------|------------------------------|
+| 0 – 249       | 1    | `STRAIGHT_THROUGH_PROCESSED` |
+| 250 – 750     | 2    | `GATE_1_HEURISTIC_ESCROW`    |
+| 751 – 1000    | 3    | `GATE_1_ISOLATED` (quarantine) |
+
+Tier-3 quarantined payloads have `state_bleed = 0.0` enforced — they produce no state mutation.
+
+### Nonce Idempotency
+
+Each ingress event carries a unique cryptographic nonce. The `RobustSettlementWALStore` stores committed nonces in an in-memory set backed by a WAL file:
+
+```
+∀ Ek ∈ IngressQueue,  State(t+1) = State(t)  iff  Nk ∈ NonceStore
+```
+
+Duplicate submissions are rejected, preventing replay attacks.
+
+### Merkle State Verification
+
+Batch settlement epochs commit a set of transactions whose leaf hashes are assembled into a binary Merkle tree. The resulting root enables O(log N) inclusion proofs without replaying historical logs.
+
+### SHA-256 Hash-Chained Ledger
+
+Every state transition is recorded as a block:
+
+```json
+{ "index": N, "prev_hash": "<hash of block N-1>", "action": "...", ... }
+```
+
+Chain integrity is verified by confirming `block[N].prev_hash == sha256(block[N-1])`.
+
+### HMAC-SHA256 Authentication
+
+All inter-node and client messages are authenticated with HMAC-SHA256 using a configurable master key. The implementation uses Node's `crypto.timingSafeEqual` to prevent timing-oracle attacks.
+
+---
+
+## Setup
+
+### Prerequisites
+
+| Tool | Minimum Version |
+|------|----------------|
+| Node.js | 20.x |
+| Python | 3.9 |
+| npm | 10.x |
+
+### Installation
 
 ```bash
-# Clone the repository
-git clone [https://github.com/jjrodz2222-create/sumeravera-protocol-core.git](https://github.com/jjrodz2222-create/sumeravera-protocol-core.git)
-
-# Navigate to project directory
+# 1. Clone the repository
+git clone https://github.com/jjrodz2222-create/sumeravera-protocol-core.git
 cd sumeravera-protocol-core
 
-# Run the benchmark
-python3 benchmark.py 
+# 2. Install Node.js dependencies
+npm install
+
+# 3. Copy environment configuration
+cp .env.example .env
+# Edit .env and set strong secret values (see Configuration section)
+```
+
+### Docker (optional)
+
+```bash
+# Build and start a production node
+docker compose up --build
+```
+
+The container exposes port **3000** (HTTP / dashboard) and **8080** (WebSocket ingress).
+
+---
+
+## Usage
+
+### Development server
+
+```bash
+npm run dev
+```
+
+Opens the React dashboard (via Vite) and starts the Express API with hot-reload at `http://localhost:3000`.
+
+### Production build
+
+```bash
+npm run build
+npm start
+```
+
+### Python benchmark
+
+```bash
+python3 benchmark.py
+```
+
+Runs a standalone throughput benchmark of the Python mathematical engines without starting the full server.
+
+### Key API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/health` | Liveness check |
+| `POST` | `/api/v1/ingress` | Submit a signed ingress payload |
+| `GET`  | `/api/v1/settlement/merkle-proof/:claimId` | Fetch Merkle inclusion proof |
+| `GET`  | `/api/v1/ledger/state` | Current homeostatic engine state |
+| `WS`   | `/ws/ingress` | Real-time ingress event stream |
+
+---
+
+## Testing
+
+The test suite is located in `test/invariants.test.mjs` and exercises production classes exported from `src/server.ts`.
+
+```bash
+npm test
+```
+
+### What the tests cover
+
+| Test | Invariant |
+|------|-----------|
+| Carrying-capacity bounds | `E_floor ≤ E(t) ≤ E_capacity` and numeric bounds guard |
+| Quintet node equilibrium | Five-node resource vector values within [0, 100] |
+| SHA-256 ledger chain validity | Hash-linking correctness, digest length |
+| Zero state bleed on quarantine | `state_bleed = 0.0` on quarantined / fraud-intercepted payloads |
+| Three-tier routing thresholds | Boundary values at 250 and 750 |
+| Nonce idempotency & replay defence | `RobustSettlementWALStore` rejects duplicate nonces |
+| Merkle root determinism | Same leaf set → same root; tampered root fails verification |
+| Capital preservation (synthetic fraud) | Anomaly index > 750 → 100% capital quarantined |
+| Sovereign Trust extraction split | 5% extraction fee, 95% net carrier savings |
+| STP / Escrow / Hard-intercept policy tiers | Three-tier disposition routing |
+
+```bash
+# Lint (TypeScript type-check)
+npm run lint
+
+# Build
+npm run build
+```
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and customise the values below. **Never commit real secrets.**
+
+| Variable | Description | Default (dev only) |
+|----------|-------------|-------------------|
+| `PORT` | HTTP server port | `3000` |
+| `SECURE_ZERO_DRIFT_SECRET_KEY` | Primary HMAC signing key | insecure dev default |
+| `SUMER_HMAC_MASTER_KEY` | Master HMAC key for inter-node auth | insecure dev default |
+| `SUMER_ADMIN_WS_TOKEN` | Admin WebSocket authentication token | insecure dev default |
+| `SUMER_SECRET_BIO` | Bio-node signing secret | insecure dev default |
+| `SUMER_SECRET_ENERGY` | Energy-node signing secret | insecure dev default |
+| `SUMER_SECRET_ART` | Art-node signing secret | insecure dev default |
+| `SETTLEMENT_STORE_PATH` | Path to persistent settlement JSON store | `./python/settlement_store.json` |
+| `WAL_LOG_PATH` | Path to Write-Ahead Log file | `./python/settlement_wal.log` |
+| `ENABLE_HONEYPOT_DIVERSION` | Route anomalous payloads to honeypot subsystem | `true` |
+| `STATE_LEDGER_ENFORCE_INVARIANTS` | Enforce protocol invariants at runtime | `true` |
+| `GEMINI_API_KEY` | Google Gemini API key (AI-assisted analysis) | — |
+| `PSEUDONYMIZATION_SALT` | Salt for pseudonymisation operations | insecure dev default |
+
+All secret variables must be at least **16 characters** long. The server performs a startup type-guard check and refuses to start if required secrets are malformed.
+
+---
+
+## Security Considerations
+
+- **HMAC-SHA256 message authentication** — all API requests that mutate state require a valid HMAC signature. Verification uses `crypto.timingSafeEqual` to resist timing-oracle attacks.
+- **Nonce replay defence** — the `RobustSettlementWALStore` rejects duplicate nonces, enforcing exactly-once semantics and preventing replay attacks.
+- **Three-tier anomaly routing** — payloads with an anomaly index above 750 are fully isolated (`state_bleed = 0.0`); they cannot mutate internal state.
+- **Honeypot diversion** — when `ENABLE_HONEYPOT_DIVERSION=true`, anomalous payloads are silently redirected to an observation subsystem rather than rejected outright, facilitating threat intelligence collection.
+- **Write-Ahead Logging (WAL)** — all settlement state is persisted to a WAL before acknowledgement. On restart, the WAL is replayed to recover full nonce and settlement state, preventing data loss from crashes.
+- **Helmet middleware** — standard HTTP security headers (`Content-Security-Policy`, `X-Frame-Options`, etc.) are applied to every response via the `helmet` package.
+- **Rate limiting** — `express-rate-limit` constrains inbound request volume to protect against denial-of-service payloads.
+- **Secret management** — production deployments **must** replace every insecure development default in `.env.example` with strong random values. The `.env` file is listed in `.gitignore` and must never be committed.
+
+---
+
+## Contributing
+
+1. Fork the repository and create a feature branch.
+2. Install dependencies: `npm install`.
+3. Run the existing test suite before making changes: `npm test`.
+4. Add or update tests for any new behaviour in `test/invariants.test.mjs`.
+5. Ensure `npm run lint` and `npm run build` pass without errors.
+6. Open a pull request describing the change and the invariants it affects. 
