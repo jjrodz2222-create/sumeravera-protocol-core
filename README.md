@@ -269,3 +269,33 @@ All secret variables must be at least **16 characters** long. The server perform
 4. Add or update tests for any new behaviour in `test/invariants.test.mjs`.
 5. Ensure `npm run lint` and `npm run build` pass without errors.
 6. Open a pull request describing the change and the invariants it affects. 
+
+## Android Module
+
+The `android/` directory contains a Gradle-based Android project for the **PawzConnect** home-screen widget.
+
+### Prerequisites
+
+| Tool | Minimum version |
+|------|----------------|
+| JDK  | 17 (Temurin recommended) |
+| Android SDK | API 26 (min), API 35 (compile/target) |
+
+> Set `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) to your Android SDK path, e.g.  
+> `export ANDROID_HOME=$HOME/Android/Sdk`
+
+### Build locally
+
+```bash
+cd android
+chmod +x gradlew
+./gradlew assembleDebug
+```
+
+The debug APK is produced at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+### CI
+
+A dedicated **Android Build** GitHub Actions workflow (`.github/workflows/android.yml`) runs `assembleDebug` on every push or pull request that touches files under `android/`. It uploads the resulting APK as a workflow artifact.
+
+CodeQL security scanning for `java-kotlin` uses manual build mode and invokes the same `./gradlew assembleDebug` command for accurate source tracing.
