@@ -764,7 +764,42 @@ def run_comparative_baseline_test(total_packets: int = 500, fraud_ratio: float =
     return report
 
 
+COMMITTED_DEV_DEFAULTS = {
+    "sumer_secret_bio_9982",
+    "sumer_secret_art_4431",
+    "sumer_secret_energy_1102",
+    "sumer_secret_gaia_7700",
+    "secure_zero_drift_secret_key_2026",
+}
+
+
+def _check_production_secrets() -> None:
+    """Abort startup in production if any agent secret is absent or equals a committed dev default."""
+    is_production = (
+        os.environ.get("NODE_ENV") == "production"
+        or os.environ.get("SUMER_ENV") == "production"
+    )
+    if not is_production:
+        return
+    problems = []
+    for agent, secret in VALID_AGENT_KEYS.items():
+        if not secret:
+            problems.append(f"Agent key for '{agent}' is absent.")
+        elif secret in COMMITTED_DEV_DEFAULTS:
+            problems.append(f"Agent key for '{agent}' equals a committed development default.")
+    if problems:
+        for p in problems:
+            print(f"[FATAL] {p}", file=sys.stderr)
+        print(
+            "[FATAL] Production startup aborted: one or more secrets are absent or equal committed dev defaults. "
+            "Set the required environment variables via a secrets manager.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def main():
+    _check_production_secrets()
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
         
