@@ -25,6 +25,8 @@ android {
 
     buildTypes {
         release {
+            // Minification disabled for this minimal widget-only build.
+            // Enable and configure ProGuard/R8 rules when shipping a production release.
             isMinifyEnabled = false
         }
     }
