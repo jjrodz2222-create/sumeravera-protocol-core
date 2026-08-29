@@ -98,6 +98,43 @@ REGISTERED_AGENTS = {
     }
 }
 
+# Known committed development defaults — must never be used in production.
+_ENGINE_DEV_DEFAULTS = {
+    "sumer_secret_bio_9982",
+    "sumer_secret_art_4431",
+    "sumer_secret_energy_1102",
+    "sumer_secret_gaia_7700",
+    "secure_zero_drift_secret_key_2026",
+    "sumer_master_hmac_secret_2026",
+}
+
+
+def _check_engine_production_secrets() -> None:
+    """Abort startup in production if any registered agent secret equals a committed dev default."""
+    is_production = (
+        os.environ.get("NODE_ENV") == "production"
+        or os.environ.get("SUMER_ENV") == "production"
+    )
+    if not is_production:
+        return
+    problems = []
+    for agent_id, agent_info in REGISTERED_AGENTS.items():
+        secret = agent_info.get("secret_key", "")
+        if not secret:
+            problems.append(f"Agent secret for '{agent_id}' is absent.")
+        elif secret in _ENGINE_DEV_DEFAULTS:
+            problems.append(f"Agent secret for '{agent_id}' equals a committed development default.")
+    if problems:
+        for p in problems:
+            print(f"[FATAL] {p}", file=sys.stderr)
+        print(
+            "[FATAL] Production startup aborted: one or more agent secrets equal committed dev defaults. "
+            "Set SUMER_SECRET_BIO, SUMER_SECRET_ART, SUMER_SECRET_ENERGY, SUMER_SECRET_GAIA "
+            "via a secrets manager.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
 
 class SHA256Ledger:
     """Cryptographic State Ledger using SHA-256 chained hashing."""
@@ -591,7 +628,7 @@ class TruthVerificationEngine:
             hashlib.sha256
         ).hexdigest()
 
-        if auth_signature and auth_signature != expected_sig:
+        if not auth_signature or not hmac.compare_digest(auth_signature, expected_sig):
             return False, f"CRYPTO_FAILURE: Invalid cryptographic signature for agent '{agent_id}'.", {
                 "code": "INVALID_SIGNATURE",
                 "severity": "HIGH"
@@ -1343,6 +1380,7 @@ class SumerAveraApp:
 # --- CLI / IPC RUNNER INTERFACE ---
 def run_cli_command():
     """Reads JSON request from stdin or command line arguments and prints JSON response."""
+    _check_engine_production_secrets()
     app = SumerAveraApp()
     
     if len(sys.argv) > 1:

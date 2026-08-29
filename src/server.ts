@@ -33,15 +33,35 @@ export interface ProtocolEnvironmentConfig {
 export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const isProduction = process.env.NODE_ENV === "production";
+
+  // Known committed development defaults — must never be used in production.
+  const COMMITTED_DEV_DEFAULTS = new Set([
+    "secure_zero_drift_secret_key_2026",
+    "sumer_master_hmac_secret_2026",
+    "sumer_admin_telemetry_ws_token_2026",
+    "sumer_secret_bio_9982",
+    "sumer_secret_art_4431",
+    "sumer_secret_energy_1102",
+    "sumer_secret_gaia_7700",
+    "sumeravera_protocol_salt_2026",
+  ]);
 
   const checkSecretString = (name: string, val: string | undefined, defaultVal: string, minLength = 16): string => {
     if (!val) {
-      warnings.push(`Environment variable '${name}' not specified; using secure sandbox default.`);
+      if (isProduction) {
+        errors.push(`Secret '${name}' is required in production but was not set.`);
+      } else {
+        warnings.push(`Environment variable '${name}' not specified; using secure sandbox default.`);
+      }
       return defaultVal;
     }
     const clean = val.trim();
     if (clean.length < minLength) {
       errors.push(`Secret '${name}' is too short (min ${minLength} chars, got ${clean.length}).`);
+    }
+    if (isProduction && COMMITTED_DEV_DEFAULTS.has(clean)) {
+      errors.push(`Secret '${name}' equals a committed development default and must not be used in production.`);
     }
     return clean;
   };
@@ -80,7 +100,7 @@ export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
     throw new Error(`Protocol Environment Type Guard Failed:\n${errors.join("\n")}`);
   }
 
-  if (warnings.length > 0 && process.env.NODE_ENV === "production") {
+  if (warnings.length > 0) {
     console.warn("\x1b[33m[WARN] Protocol Environment Validation Notices:\x1b[0m");
     warnings.forEach((warn) => console.warn(`\x1b[33m ⚠ ${warn}\x1b[0m`));
   }
@@ -940,9 +960,20 @@ wss.on("connection", (ws, req) => {
       if (body.action === "authenticate" && body.token) {
         const client = wsClientRegistry.get(ws);
         if (client) {
-          if (body.token === CONFIG.ADMIN_WS_TOKEN) {
+          const tokenBuf = Buffer.from(String(body.token));
+          const adminBuf = Buffer.from(CONFIG.ADMIN_WS_TOKEN);
+          const zeroBuf = Buffer.from(CONFIG.ZERO_DRIFT_SECRET);
+          const bioBuf = Buffer.from(CONFIG.BIO_SECRET);
+          const tokenLen = tokenBuf.length;
+          // Constant-time token comparison to prevent timing attacks.
+          const isAdmin =
+            tokenLen === adminBuf.length && crypto.timingSafeEqual(tokenBuf, adminBuf);
+          const isNode =
+            (tokenLen === zeroBuf.length && crypto.timingSafeEqual(tokenBuf, zeroBuf)) ||
+            (tokenLen === bioBuf.length && crypto.timingSafeEqual(tokenBuf, bioBuf));
+          if (isAdmin) {
             client.role = "admin";
-          } else if (body.token === CONFIG.ZERO_DRIFT_SECRET || body.token === CONFIG.BIO_SECRET) {
+          } else if (isNode) {
             client.role = "authenticated_node";
           }
           ws.send(
