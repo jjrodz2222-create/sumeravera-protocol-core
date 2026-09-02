@@ -451,330 +451,6 @@ export class MerkleTreeProofEngine {
       }
     }
 
-    type FraudCaseStatus = "OPEN_REVIEW" | "CONFIRMED_FRAUD" | "CONFIRMED_BENIGN" | "CLOSED_UNRESOLVED";
-    type FraudAnalystVerdict = "TRUE_POSITIVE" | "FALSE_POSITIVE" | "FALSE_NEGATIVE" | "BENIGN_TRUE_NEGATIVE";
-
-    interface FraudCaseRecord {
-      id: string;
-      created_at: number;
-      status: FraudCaseStatus;
-      route: "STABLE" | "REBALANCING" | "QUARANTINE";
-      anomaly_index: number;
-      claim_id?: string;
-      nonce?: string;
-      entities: string[];
-      reasons: string[];
-      predicted_prevented_loss: number;
-      analyst_verdict?: FraudAnalystVerdict;
-      confirmed_loss?: number;
-      reviewed_at?: number;
-    }
-
-    interface RootAnchorRecord {
-      id: string;
-      root: string;
-      source: string;
-      timestamp: number;
-      previous_anchor_hash: string;
-      anchor_hash: string;
-      metadata?: Record<string, any>;
-    }
-
-    export class FraudIntelligenceEngine {
-      private readonly maxAnomalyHistory = 500;
-      private anomalyHistory: number[] = [];
-      private entityRiskCounter = new Map<string, number>();
-      private blockedEntities = new Map<string, number>();
-      private entityLinks = new Map<string, Set<string>>();
-      private fraudCases = new Map<string, FraudCaseRecord>();
-      private anchors: RootAnchorRecord[] = [];
-
-      private reviewedFraud = 0;
-      private reviewedBenign = 0;
-      private falsePositives = 0;
-      private falseNegatives = 0;
-      private predictedPreventedLoss = 0;
-      private confirmedPreventedLoss = 0;
-      private totalEvaluated = 0;
-      private totalQuarantine = 0;
-      private totalRebalancing = 0;
-      private totalStable = 0;
-
-      private cleanupExpiredBlocks(now = Date.now()): void {
-        for (const [entity, blockedUntil] of this.blockedEntities.entries()) {
-          if (blockedUntil <= now) this.blockedEntities.delete(entity);
-        }
-      }
-
-      private pushAnomaly(anomaly: number): void {
-        this.anomalyHistory.push(anomaly);
-        if (this.anomalyHistory.length > this.maxAnomalyHistory) {
-          this.anomalyHistory = this.anomalyHistory.slice(-this.maxAnomalyHistory);
-        }
-      }
-
-      private getAnomalyStats(): { mean: number; std: number } {
-        if (!this.anomalyHistory.length) return { mean: 0, std: 0 };
-        const mean = this.anomalyHistory.reduce((acc, v) => acc + v, 0) / this.anomalyHistory.length;
-        const variance =
-          this.anomalyHistory.reduce((acc, v) => acc + (v - mean) * (v - mean), 0) /
-          Math.max(1, this.anomalyHistory.length - 1);
-        return { mean, std: Math.sqrt(variance) };
-      }
-
-      public extractEntities(payload: any, context: { ip?: string }): string[] {
-        const p = payload && typeof payload === "object" ? payload : {};
-        const entities = [
-          p.agent_id ? `agent:${String(p.agent_id)}` : null,
-          p.member_id ? `member:${String(p.member_id)}` : null,
-          p.provider_npi ? `provider:${String(p.provider_npi)}` : null,
-          p.device_id ? `device:${String(p.device_id)}` : null,
-          p.claim_id ? `claim:${String(p.claim_id)}` : null,
-          context.ip ? `ip:${String(context.ip)}` : null,
-        ].filter(Boolean) as string[];
-        return Array.from(new Set(entities));
-      }
-
-      public adjustAnomalyIndex(baseAnomaly: number, payload: any, context: { ip?: string }): {
-        anomaly_index: number;
-        reasons: string[];
-        entities: string[];
-        blocked: boolean;
-      } {
-        const now = Date.now();
-        this.cleanupExpiredBlocks(now);
-        const entities = this.extractEntities(payload, context);
-        const reasons: string[] = [];
-        let adjustment = 0;
-        let blocked = false;
-
-        for (const entity of entities) {
-          const blockedUntil = this.blockedEntities.get(entity);
-          if (blockedUntil && blockedUntil > now) {
-            blocked = true;
-            adjustment += 400;
-            reasons.push(`AUTO_BLOCK_ACTIVE:${entity}`);
-          }
-          const riskHits = this.entityRiskCounter.get(entity) || 0;
-          if (riskHits > 0) {
-            adjustment += Math.min(180, riskHits * 30);
-          }
-        }
-
-        const member = entities.find((e) => e.startsWith("member:"));
-        const provider = entities.find((e) => e.startsWith("provider:"));
-        const ip = entities.find((e) => e.startsWith("ip:"));
-        if (member && provider) {
-          const key = `pair:${member}->${provider}`;
-          const set = this.entityLinks.get(key) || new Set<string>();
-          if (set.size >= 4) {
-            adjustment += 180;
-            reasons.push("ENTITY_LINK_RING_PATTERN:member-provider reuse exceeds threshold.");
-          }
-        }
-        if (member && ip) {
-          const key = `pair:${member}->${ip}`;
-          const set = this.entityLinks.get(key) || new Set<string>();
-          if (set.size >= 3) {
-            adjustment += 120;
-            reasons.push("ENTITY_LINK_CLUSTER:member repeated from same network.");
-          }
-        }
-
-        const { mean, std } = this.getAnomalyStats();
-        if (this.anomalyHistory.length >= 25 && std > 0) {
-          const z = (baseAnomaly - mean) / std;
-          if (z >= 2.0) {
-            adjustment += 120;
-            reasons.push(`ANOMALY_DRIFT_SPIKE:z=${z.toFixed(2)}`);
-          }
-        }
-
-        const adjusted = Math.max(0, Math.min(1000, Math.round(baseAnomaly + adjustment)));
-        this.pushAnomaly(adjusted);
-        return { anomaly_index: adjusted, reasons, entities, blocked };
-      }
-
-      public recordEvent(input: {
-        route: "STABLE" | "REBALANCING" | "QUARANTINE";
-        anomaly_index: number;
-        entities: string[];
-        claim_id?: string;
-        nonce?: string;
-        reasons?: string[];
-        predicted_prevented_loss?: number;
-      }): FraudCaseRecord | null {
-        this.totalEvaluated += 1;
-        if (input.route === "QUARANTINE") this.totalQuarantine += 1;
-        if (input.route === "REBALANCING") this.totalRebalancing += 1;
-        if (input.route === "STABLE") this.totalStable += 1;
-
-        const linkTarget = input.claim_id || input.nonce || `event-${Date.now()}`;
-        const member = input.entities.find((e) => e.startsWith("member:"));
-        const provider = input.entities.find((e) => e.startsWith("provider:"));
-        const ip = input.entities.find((e) => e.startsWith("ip:"));
-        for (const entity of input.entities) {
-          const risk = this.entityRiskCounter.get(entity) || 0;
-          const nextRisk = input.route === "QUARANTINE" ? Math.min(10, risk + 1) : Math.max(0, risk - 1);
-          this.entityRiskCounter.set(entity, nextRisk);
-          const linkSet = this.entityLinks.get(entity) || new Set<string>();
-          linkSet.add(linkTarget);
-          if (linkSet.size > 25) {
-            const values = Array.from(linkSet).slice(-25);
-            this.entityLinks.set(entity, new Set(values));
-          } else {
-            this.entityLinks.set(entity, linkSet);
-          }
-          if (nextRisk >= 4 && input.route === "QUARANTINE") {
-            this.blockedEntities.set(entity, Date.now() + 30 * 60 * 1000);
-          }
-        }
-        if (member && provider) {
-          const key = `pair:${member}->${provider}`;
-          const set = this.entityLinks.get(key) || new Set<string>();
-          set.add(linkTarget);
-          if (set.size > 25) {
-            this.entityLinks.set(key, new Set(Array.from(set).slice(-25)));
-          } else {
-            this.entityLinks.set(key, set);
-          }
-        }
-        if (member && ip) {
-          const key = `pair:${member}->${ip}`;
-          const set = this.entityLinks.get(key) || new Set<string>();
-          set.add(linkTarget);
-          if (set.size > 25) {
-            this.entityLinks.set(key, new Set(Array.from(set).slice(-25)));
-          } else {
-            this.entityLinks.set(key, set);
-          }
-        }
-
-        const needsCase = input.route === "REBALANCING" || input.route === "QUARANTINE";
-        if (!needsCase) return null;
-
-        const predicted = Number(input.predicted_prevented_loss || 0);
-        this.predictedPreventedLoss += predicted;
-
-        const fraudCase: FraudCaseRecord = {
-          id: `CASE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          created_at: Date.now(),
-          status: "OPEN_REVIEW",
-          route: input.route,
-          anomaly_index: input.anomaly_index,
-          claim_id: input.claim_id,
-          nonce: input.nonce,
-          entities: input.entities,
-          reasons: input.reasons || [],
-          predicted_prevented_loss: predicted,
-        };
-        this.fraudCases.set(fraudCase.id, fraudCase);
-        return fraudCase;
-      }
-
-      public reviewCase(caseId: string, verdict: FraudAnalystVerdict, confirmedLoss?: number): FraudCaseRecord | null {
-        const found = this.fraudCases.get(caseId);
-        if (!found) return null;
-        found.analyst_verdict = verdict;
-        found.reviewed_at = Date.now();
-        if (typeof confirmedLoss === "number" && Number.isFinite(confirmedLoss) && confirmedLoss >= 0) {
-          found.confirmed_loss = confirmedLoss;
-          this.confirmedPreventedLoss += confirmedLoss;
-        }
-
-        if (verdict === "TRUE_POSITIVE") {
-          found.status = "CONFIRMED_FRAUD";
-          this.reviewedFraud += 1;
-        } else if (verdict === "FALSE_POSITIVE") {
-          found.status = "CONFIRMED_BENIGN";
-          this.falsePositives += 1;
-          this.reviewedBenign += 1;
-          for (const entity of found.entities) {
-            this.entityRiskCounter.set(entity, Math.max(0, (this.entityRiskCounter.get(entity) || 0) - 2));
-            this.blockedEntities.delete(entity);
-          }
-        } else if (verdict === "FALSE_NEGATIVE") {
-          found.status = "CLOSED_UNRESOLVED";
-          this.falseNegatives += 1;
-          this.reviewedFraud += 1;
-        } else {
-          found.status = "CONFIRMED_BENIGN";
-          this.reviewedBenign += 1;
-        }
-
-        return found;
-      }
-
-      public listCases(status?: FraudCaseStatus): FraudCaseRecord[] {
-        const list = Array.from(this.fraudCases.values()).sort((a, b) => b.created_at - a.created_at);
-        return status ? list.filter((item) => item.status === status) : list;
-      }
-
-      public anchorMerkleRoot(root: string, source: string, metadata?: Record<string, any>): RootAnchorRecord {
-        const previous_anchor_hash = this.anchors.length ? this.anchors[this.anchors.length - 1].anchor_hash : "0".repeat(64);
-        const timestamp = Date.now();
-        const anchor_hash = crypto
-          .createHash("sha256")
-          .update(canonicalizeJson({ root, source, timestamp, previous_anchor_hash, metadata: metadata || null }))
-          .digest("hex");
-        const anchor: RootAnchorRecord = {
-          id: `ANCHOR-${timestamp}-${Math.floor(Math.random() * 1000)}`,
-          root,
-          source,
-          timestamp,
-          previous_anchor_hash,
-          anchor_hash,
-          metadata,
-        };
-        this.anchors.push(anchor);
-        if (this.anchors.length > 1000) this.anchors = this.anchors.slice(-1000);
-        return anchor;
-      }
-
-      public listAnchors(limit = 50): RootAnchorRecord[] {
-        return this.anchors.slice(-Math.max(1, Math.min(limit, 200))).reverse();
-      }
-
-      public getKpis() {
-        const reviewedTotal = this.reviewedFraud + this.reviewedBenign;
-        const truePositives = this.reviewedFraud - this.falseNegatives;
-        const precision = truePositives + this.falsePositives > 0 ? truePositives / (truePositives + this.falsePositives) : 0;
-        const recall = this.reviewedFraud > 0 ? truePositives / this.reviewedFraud : 0;
-        const preventedLossAccuracy =
-          this.predictedPreventedLoss > 0 ? this.confirmedPreventedLoss / this.predictedPreventedLoss : 0;
-
-        return {
-          totals: {
-            evaluated: this.totalEvaluated,
-            stable: this.totalStable,
-            rebalancing: this.totalRebalancing,
-            quarantine: this.totalQuarantine,
-            open_cases: this.listCases("OPEN_REVIEW").length,
-            blocked_entities: this.blockedEntities.size,
-            reviewed_cases: reviewedTotal,
-          },
-          model_quality: {
-            precision,
-            recall,
-            false_positive_rate: reviewedTotal > 0 ? this.falsePositives / reviewedTotal : 0,
-            false_negative_count: this.falseNegatives,
-          },
-          prevented_loss: {
-            predicted_total: Number(this.predictedPreventedLoss.toFixed(2)),
-            confirmed_total: Number(this.confirmedPreventedLoss.toFixed(2)),
-            accuracy_ratio: Number(preventedLossAccuracy.toFixed(4)),
-          },
-          adaptive_threshold: this.getAnomalyStats(),
-          active_blocklist: Array.from(this.blockedEntities.entries()).map(([entity, until]) => ({
-            entity,
-            blocked_until: until,
-          })),
-        };
-      }
-    }
-
-    const fraudIntel = new FraudIntelligenceEngine();
-
     if (targetIndex === -1) {
       throw new Error(`Claim ID '${targetClaimId}' not found in transaction batch.`);
     }
@@ -830,6 +506,310 @@ export class MerkleTreeProofEngine {
     return current === expectedRoot;
   }
 }
+
+type FraudCaseStatus = "OPEN_REVIEW" | "CONFIRMED_FRAUD" | "CONFIRMED_BENIGN" | "CLOSED_UNRESOLVED";
+type FraudAnalystVerdict = "TRUE_POSITIVE" | "FALSE_POSITIVE" | "FALSE_NEGATIVE" | "BENIGN_TRUE_NEGATIVE";
+
+interface FraudCaseRecord {
+  id: string;
+  created_at: number;
+  status: FraudCaseStatus;
+  route: "STABLE" | "REBALANCING" | "QUARANTINE";
+  anomaly_index: number;
+  claim_id?: string;
+  nonce?: string;
+  entities: string[];
+  reasons: string[];
+  predicted_prevented_loss: number;
+  analyst_verdict?: FraudAnalystVerdict;
+  confirmed_loss?: number;
+  reviewed_at?: number;
+}
+
+interface RootAnchorRecord {
+  id: string;
+  root: string;
+  source: string;
+  timestamp: number;
+  previous_anchor_hash: string;
+  anchor_hash: string;
+  metadata?: Record<string, any>;
+}
+
+export class FraudIntelligenceEngine {
+  private readonly maxAnomalyHistory = 500;
+  private anomalyHistory: number[] = [];
+  private entityRiskCounter = new Map<string, number>();
+  private blockedEntities = new Map<string, number>();
+  private entityLinks = new Map<string, Set<string>>();
+  private fraudCases = new Map<string, FraudCaseRecord>();
+  private anchors: RootAnchorRecord[] = [];
+
+  private reviewedFraud = 0;
+  private reviewedBenign = 0;
+  private falsePositives = 0;
+  private falseNegatives = 0;
+  private predictedPreventedLoss = 0;
+  private confirmedPreventedLoss = 0;
+  private totalEvaluated = 0;
+  private totalQuarantine = 0;
+  private totalRebalancing = 0;
+  private totalStable = 0;
+
+  private cleanupExpiredBlocks(now = Date.now()): void {
+    for (const [entity, blockedUntil] of this.blockedEntities.entries()) {
+      if (blockedUntil <= now) this.blockedEntities.delete(entity);
+    }
+  }
+
+  private pushAnomaly(anomaly: number): void {
+    this.anomalyHistory.push(anomaly);
+    if (this.anomalyHistory.length > this.maxAnomalyHistory) {
+      this.anomalyHistory = this.anomalyHistory.slice(-this.maxAnomalyHistory);
+    }
+  }
+
+  private getAnomalyStats(): { mean: number; std: number } {
+    if (!this.anomalyHistory.length) return { mean: 0, std: 0 };
+    const mean = this.anomalyHistory.reduce((acc, v) => acc + v, 0) / this.anomalyHistory.length;
+    const variance =
+      this.anomalyHistory.reduce((acc, v) => acc + (v - mean) * (v - mean), 0) / Math.max(1, this.anomalyHistory.length - 1);
+    return { mean, std: Math.sqrt(variance) };
+  }
+
+  public extractEntities(payload: any, context: { ip?: string }): string[] {
+    const p = payload && typeof payload === "object" ? payload : {};
+    const entities = [
+      p.agent_id ? `agent:${String(p.agent_id)}` : null,
+      p.member_id ? `member:${String(p.member_id)}` : null,
+      p.provider_npi ? `provider:${String(p.provider_npi)}` : null,
+      p.device_id ? `device:${String(p.device_id)}` : null,
+      p.claim_id ? `claim:${String(p.claim_id)}` : null,
+      context.ip ? `ip:${String(context.ip)}` : null,
+    ].filter(Boolean) as string[];
+    return Array.from(new Set(entities));
+  }
+
+  public adjustAnomalyIndex(baseAnomaly: number, payload: any, context: { ip?: string }): {
+    anomaly_index: number;
+    reasons: string[];
+    entities: string[];
+    blocked: boolean;
+  } {
+    const now = Date.now();
+    this.cleanupExpiredBlocks(now);
+    const entities = this.extractEntities(payload, context);
+    const reasons: string[] = [];
+    let adjustment = 0;
+    let blocked = false;
+
+    for (const entity of entities) {
+      const blockedUntil = this.blockedEntities.get(entity);
+      if (blockedUntil && blockedUntil > now) {
+        blocked = true;
+        adjustment += 400;
+        reasons.push(`AUTO_BLOCK_ACTIVE:${entity}`);
+      }
+      const riskHits = this.entityRiskCounter.get(entity) || 0;
+      if (riskHits > 0) adjustment += Math.min(180, riskHits * 30);
+    }
+
+    const member = entities.find((e) => e.startsWith("member:"));
+    const provider = entities.find((e) => e.startsWith("provider:"));
+    const ip = entities.find((e) => e.startsWith("ip:"));
+    if (member && provider) {
+      const key = `pair:${member}->${provider}`;
+      if ((this.entityLinks.get(key) || new Set<string>()).size >= 4) {
+        adjustment += 180;
+        reasons.push("ENTITY_LINK_RING_PATTERN:member-provider reuse exceeds threshold.");
+      }
+    }
+    if (member && ip) {
+      const key = `pair:${member}->${ip}`;
+      if ((this.entityLinks.get(key) || new Set<string>()).size >= 3) {
+        adjustment += 120;
+        reasons.push("ENTITY_LINK_CLUSTER:member repeated from same network.");
+      }
+    }
+
+    const { mean, std } = this.getAnomalyStats();
+    if (this.anomalyHistory.length >= 25 && std > 0) {
+      const z = (baseAnomaly - mean) / std;
+      if (z >= 2.0) {
+        adjustment += 120;
+        reasons.push(`ANOMALY_DRIFT_SPIKE:z=${z.toFixed(2)}`);
+      }
+    }
+
+    const adjusted = Math.max(0, Math.min(1000, Math.round(baseAnomaly + adjustment)));
+    this.pushAnomaly(adjusted);
+    return { anomaly_index: adjusted, reasons, entities, blocked };
+  }
+
+  public recordEvent(input: {
+    route: "STABLE" | "REBALANCING" | "QUARANTINE";
+    anomaly_index: number;
+    entities: string[];
+    claim_id?: string;
+    nonce?: string;
+    reasons?: string[];
+    predicted_prevented_loss?: number;
+  }): FraudCaseRecord | null {
+    this.totalEvaluated += 1;
+    if (input.route === "QUARANTINE") this.totalQuarantine += 1;
+    if (input.route === "REBALANCING") this.totalRebalancing += 1;
+    if (input.route === "STABLE") this.totalStable += 1;
+
+    const linkTarget = input.claim_id || input.nonce || `event-${Date.now()}`;
+    const member = input.entities.find((e) => e.startsWith("member:"));
+    const provider = input.entities.find((e) => e.startsWith("provider:"));
+    const ip = input.entities.find((e) => e.startsWith("ip:"));
+    for (const entity of input.entities) {
+      const risk = this.entityRiskCounter.get(entity) || 0;
+      const nextRisk = input.route === "QUARANTINE" ? Math.min(10, risk + 1) : Math.max(0, risk - 1);
+      this.entityRiskCounter.set(entity, nextRisk);
+      const linkSet = this.entityLinks.get(entity) || new Set<string>();
+      linkSet.add(linkTarget);
+      if (linkSet.size > 25) {
+        this.entityLinks.set(entity, new Set(Array.from(linkSet).slice(-25)));
+      } else {
+        this.entityLinks.set(entity, linkSet);
+      }
+      if (nextRisk >= 4 && input.route === "QUARANTINE") {
+        this.blockedEntities.set(entity, Date.now() + 30 * 60 * 1000);
+      }
+    }
+    if (member && provider) {
+      const key = `pair:${member}->${provider}`;
+      const set = this.entityLinks.get(key) || new Set<string>();
+      set.add(linkTarget);
+      this.entityLinks.set(key, set.size > 25 ? new Set(Array.from(set).slice(-25)) : set);
+    }
+    if (member && ip) {
+      const key = `pair:${member}->${ip}`;
+      const set = this.entityLinks.get(key) || new Set<string>();
+      set.add(linkTarget);
+      this.entityLinks.set(key, set.size > 25 ? new Set(Array.from(set).slice(-25)) : set);
+    }
+
+    const needsCase = input.route === "REBALANCING" || input.route === "QUARANTINE";
+    if (!needsCase) return null;
+
+    const predicted = Number(input.predicted_prevented_loss || 0);
+    this.predictedPreventedLoss += predicted;
+    const fraudCase: FraudCaseRecord = {
+      id: `CASE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      created_at: Date.now(),
+      status: "OPEN_REVIEW",
+      route: input.route,
+      anomaly_index: input.anomaly_index,
+      claim_id: input.claim_id,
+      nonce: input.nonce,
+      entities: input.entities,
+      reasons: input.reasons || [],
+      predicted_prevented_loss: predicted,
+    };
+    this.fraudCases.set(fraudCase.id, fraudCase);
+    return fraudCase;
+  }
+
+  public reviewCase(caseId: string, verdict: FraudAnalystVerdict, confirmedLoss?: number): FraudCaseRecord | null {
+    const found = this.fraudCases.get(caseId);
+    if (!found) return null;
+    found.analyst_verdict = verdict;
+    found.reviewed_at = Date.now();
+    if (typeof confirmedLoss === "number" && Number.isFinite(confirmedLoss) && confirmedLoss >= 0) {
+      found.confirmed_loss = confirmedLoss;
+      this.confirmedPreventedLoss += confirmedLoss;
+    }
+
+    if (verdict === "TRUE_POSITIVE") {
+      found.status = "CONFIRMED_FRAUD";
+      this.reviewedFraud += 1;
+    } else if (verdict === "FALSE_POSITIVE") {
+      found.status = "CONFIRMED_BENIGN";
+      this.falsePositives += 1;
+      this.reviewedBenign += 1;
+      for (const entity of found.entities) {
+        this.entityRiskCounter.set(entity, Math.max(0, (this.entityRiskCounter.get(entity) || 0) - 2));
+        this.blockedEntities.delete(entity);
+      }
+    } else if (verdict === "FALSE_NEGATIVE") {
+      found.status = "CLOSED_UNRESOLVED";
+      this.falseNegatives += 1;
+      this.reviewedFraud += 1;
+    } else {
+      found.status = "CONFIRMED_BENIGN";
+      this.reviewedBenign += 1;
+    }
+    return found;
+  }
+
+  public listCases(status?: FraudCaseStatus): FraudCaseRecord[] {
+    const list = Array.from(this.fraudCases.values()).sort((a, b) => b.created_at - a.created_at);
+    return status ? list.filter((item) => item.status === status) : list;
+  }
+
+  public anchorMerkleRoot(root: string, source: string, metadata?: Record<string, any>): RootAnchorRecord {
+    const previous_anchor_hash = this.anchors.length ? this.anchors[this.anchors.length - 1].anchor_hash : "0".repeat(64);
+    const timestamp = Date.now();
+    const anchor_hash = crypto
+      .createHash("sha256")
+      .update(canonicalizeJson({ root, source, timestamp, previous_anchor_hash, metadata: metadata || null }))
+      .digest("hex");
+    const anchor: RootAnchorRecord = {
+      id: `ANCHOR-${timestamp}-${Math.floor(Math.random() * 1000)}`,
+      root,
+      source,
+      timestamp,
+      previous_anchor_hash,
+      anchor_hash,
+      metadata,
+    };
+    this.anchors.push(anchor);
+    if (this.anchors.length > 1000) this.anchors = this.anchors.slice(-1000);
+    return anchor;
+  }
+
+  public listAnchors(limit = 50): RootAnchorRecord[] {
+    return this.anchors.slice(-Math.max(1, Math.min(limit, 200))).reverse();
+  }
+
+  public getKpis() {
+    const reviewedTotal = this.reviewedFraud + this.reviewedBenign;
+    const truePositives = this.reviewedFraud - this.falseNegatives;
+    const precision = truePositives + this.falsePositives > 0 ? truePositives / (truePositives + this.falsePositives) : 0;
+    const recall = this.reviewedFraud > 0 ? truePositives / this.reviewedFraud : 0;
+    const preventedLossAccuracy = this.predictedPreventedLoss > 0 ? this.confirmedPreventedLoss / this.predictedPreventedLoss : 0;
+
+    return {
+      totals: {
+        evaluated: this.totalEvaluated,
+        stable: this.totalStable,
+        rebalancing: this.totalRebalancing,
+        quarantine: this.totalQuarantine,
+        open_cases: this.listCases("OPEN_REVIEW").length,
+        blocked_entities: this.blockedEntities.size,
+        reviewed_cases: reviewedTotal,
+      },
+      model_quality: {
+        precision,
+        recall,
+        false_positive_rate: reviewedTotal > 0 ? this.falsePositives / reviewedTotal : 0,
+        false_negative_count: this.falseNegatives,
+      },
+      prevented_loss: {
+        predicted_total: Number(this.predictedPreventedLoss.toFixed(2)),
+        confirmed_total: Number(this.confirmedPreventedLoss.toFixed(2)),
+        accuracy_ratio: Number(preventedLossAccuracy.toFixed(4)),
+      },
+      adaptive_threshold: this.getAnomalyStats(),
+      active_blocklist: Array.from(this.blockedEntities.entries()).map(([entity, until]) => ({ entity, blocked_until: until })),
+    };
+  }
+}
+
+const fraudIntel = new FraudIntelligenceEngine();
 
 // -----------------------------------------------------------------------------
 // 7. WEBSOCKET PRIVACY: Role-based client filtering & deterministic pseudonymization
