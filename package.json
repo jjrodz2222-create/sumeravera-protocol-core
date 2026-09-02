@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "NODE_ENV=test node --import tsx/esm --test test/*.test.mjs"
+    "test": "NODE_ENV=test node --import tsx/esm --test test/*.test.mjs",
+    "gh:auth:check": "bash scripts/gh-auth-check.sh"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

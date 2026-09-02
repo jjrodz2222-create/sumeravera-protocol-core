@@ -18,6 +18,7 @@
 8. [Security Considerations](#security-considerations)
 9. [Contributing](#contributing)
 10. [Governance Rollout Artifacts](#governance-rollout-artifacts)
+11. [GitHub CLI Authorization](#github-cli-authorization)
 
 ---
 
@@ -302,6 +303,11 @@ All secret variables must be at least **16 characters** long. The server perform
 - Governance issue draft body: `/docs/governance/fraud-defense-issue-template.md`
 - GitHub issue template: `/.github/ISSUE_TEMPLATE/fraud-defense-governance.md`
 - Pilot + phased rollout runbook: `/docs/governance/fraud-defense-rollout-runbook.md`
+
+## GitHub CLI Authorization
+
+- Authorization guide: `/docs/github-cli-authorization.md`
+- Local/CI auth helper command: `npm run gh:auth:check`
 
 ## Android Module
 
