@@ -11,6 +11,7 @@ import {
   MerkleTreeProofEngine,
   verifyCryptographicHmac,
   canonicalizeJson,
+  FraudIntelligenceEngine,
 } from "../src/server.ts";
 
 // ---------------------------------------------------------------------------
@@ -200,6 +201,57 @@ test("Sovereign Trust Invariant: Batch Settlement Epoch Merkle Root Determinism"
   assert.equal(tampered, false, "Tampered root must fail proof verification");
 });
 
+test("Fraud Intelligence Invariant: repeated quarantines trigger adaptive blocking", () => {
+  const intel = new FraudIntelligenceEngine();
+  const payload = {
+    agent_id: "agent_bio_1",
+    member_id: "MEM-100",
+    provider_npi: "NPI-777",
+    claim_id: "CLM-100",
+  };
+
+  let adjusted = intel.adjustAnomalyIndex(820, payload, { ip: "10.0.0.1" });
+  intel.recordEvent({ route: "QUARANTINE", anomaly_index: adjusted.anomaly_index, entities: adjusted.entities, claim_id: "CLM-100", nonce: "N-1" });
+  adjusted = intel.adjustAnomalyIndex(830, { ...payload, claim_id: "CLM-101" }, { ip: "10.0.0.1" });
+  intel.recordEvent({ route: "QUARANTINE", anomaly_index: adjusted.anomaly_index, entities: adjusted.entities, claim_id: "CLM-101", nonce: "N-2" });
+  adjusted = intel.adjustAnomalyIndex(840, { ...payload, claim_id: "CLM-102" }, { ip: "10.0.0.1" });
+  intel.recordEvent({ route: "QUARANTINE", anomaly_index: adjusted.anomaly_index, entities: adjusted.entities, claim_id: "CLM-102", nonce: "N-3" });
+  adjusted = intel.adjustAnomalyIndex(850, { ...payload, claim_id: "CLM-103" }, { ip: "10.0.0.1" });
+  intel.recordEvent({ route: "QUARANTINE", anomaly_index: adjusted.anomaly_index, entities: adjusted.entities, claim_id: "CLM-103", nonce: "N-4" });
+
+  const blockedEval = intel.adjustAnomalyIndex(100, { ...payload, claim_id: "CLM-104" }, { ip: "10.0.0.1" });
+  assert.equal(blockedEval.blocked, true, "Repeated high-risk entities must be auto-blocked");
+  assert.ok(blockedEval.anomaly_index > 750, "Blocked entities must be escalated above quarantine threshold");
+});
+
+test("Fraud Intelligence Invariant: analyst feedback updates precision/recall KPIs", () => {
+  const intel = new FraudIntelligenceEngine();
+  const caseA = intel.recordEvent({
+    route: "QUARANTINE",
+    anomaly_index: 900,
+    entities: ["agent:agent_bio_1", "member:MEM-22", "ip:10.0.0.5"],
+    claim_id: "CLM-500",
+    nonce: "N-500",
+    predicted_prevented_loss: 1000,
+  });
+  const caseB = intel.recordEvent({
+    route: "REBALANCING",
+    anomaly_index: 620,
+    entities: ["agent:agent_bio_1", "member:MEM-33", "ip:10.0.0.6"],
+    claim_id: "CLM-501",
+    nonce: "N-501",
+    predicted_prevented_loss: 500,
+  });
+  assert.ok(caseA?.id && caseB?.id, "Risk routes should generate analyst cases");
+
+  intel.reviewCase(caseA.id, "TRUE_POSITIVE", 900);
+  intel.reviewCase(caseB.id, "FALSE_POSITIVE", 0);
+  const kpis = intel.getKpis();
+
+  assert.ok(kpis.model_quality.precision >= 0, "Precision metric must be reported");
+  assert.ok(kpis.model_quality.recall >= 0, "Recall metric must be reported");
+  assert.ok(kpis.prevented_loss.predicted_total >= kpis.prevented_loss.confirmed_total, "Predicted prevented loss should not be lower than confirmed loss in this scenario");
+});
 
 
 

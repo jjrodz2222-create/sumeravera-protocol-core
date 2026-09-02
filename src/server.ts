@@ -28,6 +28,10 @@ export interface ProtocolEnvironmentConfig {
   WAL_LOG_PATH: string;
   NONCE_TTL_MS: number;
   PSEUDONYMIZATION_SALT: string;
+  REQUIRE_MTLS: boolean;
+  MTLS_PROXY_HEADER: string;
+  REVOKED_KEY_IDS: Set<string>;
+  HMAC_KEYRING: Record<string, string>;
 }
 
 export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
@@ -118,6 +122,32 @@ export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
     WAL_LOG_PATH: process.env.WAL_LOG_PATH || path.join(process.cwd(), "python", "settlement_wal.log"),
     NONCE_TTL_MS: 24 * 60 * 60 * 1000,
     PSEUDONYMIZATION_SALT: process.env.SUMER_SALT || "sumeravera_protocol_salt_2026",
+    REQUIRE_MTLS: String(process.env.SUMER_REQUIRE_MTLS || "false").toLowerCase() === "true",
+    MTLS_PROXY_HEADER: process.env.SUMER_MTLS_PROXY_HEADER || "x-mtls-client-verified",
+    REVOKED_KEY_IDS: new Set(
+      String(process.env.SUMER_REVOKED_KEY_IDS || "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+    ),
+    HMAC_KEYRING: (() => {
+      const raw = process.env.SUMER_HMAC_KEYRING_JSON;
+      if (!raw) return {};
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+        const keyring: Record<string, string> = {};
+        for (const [keyId, secret] of Object.entries(parsed)) {
+          if (typeof secret === "string" && secret.trim().length >= 16) {
+            keyring[keyId] = secret.trim();
+          }
+        }
+        return keyring;
+      } catch {
+        warnings.push("SUMER_HMAC_KEYRING_JSON is invalid JSON and has been ignored.");
+        return {};
+      }
+    })(),
   };
 }
 
@@ -169,7 +199,8 @@ export function canonicalizeJson(obj: any): string {
 // -----------------------------------------------------------------------------
 export function verifyCryptographicHmac(
   serializedPayload: string,
-  providedSignature: string | undefined | null
+  providedSignature: string | undefined | null,
+  options?: { keyId?: string | null }
 ): boolean {
   if (!providedSignature || typeof providedSignature !== "string") {
     return false;
@@ -185,14 +216,31 @@ export function verifyCryptographicHmac(
     return false;
   }
 
-  const candidateKeys = [...new Set([
+  const keyId = options?.keyId?.trim();
+  if (keyId && CONFIG.REVOKED_KEY_IDS.has(keyId)) {
+    return false;
+  }
+
+  const defaultKeys = [
     CONFIG.SECRET_KEY,
     CONFIG.ZERO_DRIFT_SECRET,
     CONFIG.BIO_SECRET,
     CONFIG.ENERGY_SECRET,
     CONFIG.ART_SECRET,
     CONFIG.MASTER_HMAC_KEY,
-  ])];
+  ];
+
+  const candidateKeys =
+    keyId && CONFIG.HMAC_KEYRING[keyId]
+      ? [CONFIG.HMAC_KEYRING[keyId]]
+      : [
+          ...new Set([
+            ...defaultKeys,
+            ...Object.entries(CONFIG.HMAC_KEYRING)
+              .filter(([k]) => !CONFIG.REVOKED_KEY_IDS.has(k))
+              .map(([, secret]) => secret),
+          ]),
+        ];
 
   const payloadVariations: string[] = [serializedPayload];
   try {
@@ -402,6 +450,330 @@ export class MerkleTreeProofEngine {
         targetIndex = idx;
       }
     }
+
+    type FraudCaseStatus = "OPEN_REVIEW" | "CONFIRMED_FRAUD" | "CONFIRMED_BENIGN" | "CLOSED_UNRESOLVED";
+    type FraudAnalystVerdict = "TRUE_POSITIVE" | "FALSE_POSITIVE" | "FALSE_NEGATIVE" | "BENIGN_TRUE_NEGATIVE";
+
+    interface FraudCaseRecord {
+      id: string;
+      created_at: number;
+      status: FraudCaseStatus;
+      route: "STABLE" | "REBALANCING" | "QUARANTINE";
+      anomaly_index: number;
+      claim_id?: string;
+      nonce?: string;
+      entities: string[];
+      reasons: string[];
+      predicted_prevented_loss: number;
+      analyst_verdict?: FraudAnalystVerdict;
+      confirmed_loss?: number;
+      reviewed_at?: number;
+    }
+
+    interface RootAnchorRecord {
+      id: string;
+      root: string;
+      source: string;
+      timestamp: number;
+      previous_anchor_hash: string;
+      anchor_hash: string;
+      metadata?: Record<string, any>;
+    }
+
+    export class FraudIntelligenceEngine {
+      private readonly maxAnomalyHistory = 500;
+      private anomalyHistory: number[] = [];
+      private entityRiskCounter = new Map<string, number>();
+      private blockedEntities = new Map<string, number>();
+      private entityLinks = new Map<string, Set<string>>();
+      private fraudCases = new Map<string, FraudCaseRecord>();
+      private anchors: RootAnchorRecord[] = [];
+
+      private reviewedFraud = 0;
+      private reviewedBenign = 0;
+      private falsePositives = 0;
+      private falseNegatives = 0;
+      private predictedPreventedLoss = 0;
+      private confirmedPreventedLoss = 0;
+      private totalEvaluated = 0;
+      private totalQuarantine = 0;
+      private totalRebalancing = 0;
+      private totalStable = 0;
+
+      private cleanupExpiredBlocks(now = Date.now()): void {
+        for (const [entity, blockedUntil] of this.blockedEntities.entries()) {
+          if (blockedUntil <= now) this.blockedEntities.delete(entity);
+        }
+      }
+
+      private pushAnomaly(anomaly: number): void {
+        this.anomalyHistory.push(anomaly);
+        if (this.anomalyHistory.length > this.maxAnomalyHistory) {
+          this.anomalyHistory = this.anomalyHistory.slice(-this.maxAnomalyHistory);
+        }
+      }
+
+      private getAnomalyStats(): { mean: number; std: number } {
+        if (!this.anomalyHistory.length) return { mean: 0, std: 0 };
+        const mean = this.anomalyHistory.reduce((acc, v) => acc + v, 0) / this.anomalyHistory.length;
+        const variance =
+          this.anomalyHistory.reduce((acc, v) => acc + (v - mean) * (v - mean), 0) /
+          Math.max(1, this.anomalyHistory.length - 1);
+        return { mean, std: Math.sqrt(variance) };
+      }
+
+      public extractEntities(payload: any, context: { ip?: string }): string[] {
+        const p = payload && typeof payload === "object" ? payload : {};
+        const entities = [
+          p.agent_id ? `agent:${String(p.agent_id)}` : null,
+          p.member_id ? `member:${String(p.member_id)}` : null,
+          p.provider_npi ? `provider:${String(p.provider_npi)}` : null,
+          p.device_id ? `device:${String(p.device_id)}` : null,
+          p.claim_id ? `claim:${String(p.claim_id)}` : null,
+          context.ip ? `ip:${String(context.ip)}` : null,
+        ].filter(Boolean) as string[];
+        return Array.from(new Set(entities));
+      }
+
+      public adjustAnomalyIndex(baseAnomaly: number, payload: any, context: { ip?: string }): {
+        anomaly_index: number;
+        reasons: string[];
+        entities: string[];
+        blocked: boolean;
+      } {
+        const now = Date.now();
+        this.cleanupExpiredBlocks(now);
+        const entities = this.extractEntities(payload, context);
+        const reasons: string[] = [];
+        let adjustment = 0;
+        let blocked = false;
+
+        for (const entity of entities) {
+          const blockedUntil = this.blockedEntities.get(entity);
+          if (blockedUntil && blockedUntil > now) {
+            blocked = true;
+            adjustment += 400;
+            reasons.push(`AUTO_BLOCK_ACTIVE:${entity}`);
+          }
+          const riskHits = this.entityRiskCounter.get(entity) || 0;
+          if (riskHits > 0) {
+            adjustment += Math.min(180, riskHits * 30);
+          }
+        }
+
+        const member = entities.find((e) => e.startsWith("member:"));
+        const provider = entities.find((e) => e.startsWith("provider:"));
+        const ip = entities.find((e) => e.startsWith("ip:"));
+        if (member && provider) {
+          const key = `pair:${member}->${provider}`;
+          const set = this.entityLinks.get(key) || new Set<string>();
+          if (set.size >= 4) {
+            adjustment += 180;
+            reasons.push("ENTITY_LINK_RING_PATTERN:member-provider reuse exceeds threshold.");
+          }
+        }
+        if (member && ip) {
+          const key = `pair:${member}->${ip}`;
+          const set = this.entityLinks.get(key) || new Set<string>();
+          if (set.size >= 3) {
+            adjustment += 120;
+            reasons.push("ENTITY_LINK_CLUSTER:member repeated from same network.");
+          }
+        }
+
+        const { mean, std } = this.getAnomalyStats();
+        if (this.anomalyHistory.length >= 25 && std > 0) {
+          const z = (baseAnomaly - mean) / std;
+          if (z >= 2.0) {
+            adjustment += 120;
+            reasons.push(`ANOMALY_DRIFT_SPIKE:z=${z.toFixed(2)}`);
+          }
+        }
+
+        const adjusted = Math.max(0, Math.min(1000, Math.round(baseAnomaly + adjustment)));
+        this.pushAnomaly(adjusted);
+        return { anomaly_index: adjusted, reasons, entities, blocked };
+      }
+
+      public recordEvent(input: {
+        route: "STABLE" | "REBALANCING" | "QUARANTINE";
+        anomaly_index: number;
+        entities: string[];
+        claim_id?: string;
+        nonce?: string;
+        reasons?: string[];
+        predicted_prevented_loss?: number;
+      }): FraudCaseRecord | null {
+        this.totalEvaluated += 1;
+        if (input.route === "QUARANTINE") this.totalQuarantine += 1;
+        if (input.route === "REBALANCING") this.totalRebalancing += 1;
+        if (input.route === "STABLE") this.totalStable += 1;
+
+        const linkTarget = input.claim_id || input.nonce || `event-${Date.now()}`;
+        const member = input.entities.find((e) => e.startsWith("member:"));
+        const provider = input.entities.find((e) => e.startsWith("provider:"));
+        const ip = input.entities.find((e) => e.startsWith("ip:"));
+        for (const entity of input.entities) {
+          const risk = this.entityRiskCounter.get(entity) || 0;
+          const nextRisk = input.route === "QUARANTINE" ? Math.min(10, risk + 1) : Math.max(0, risk - 1);
+          this.entityRiskCounter.set(entity, nextRisk);
+          const linkSet = this.entityLinks.get(entity) || new Set<string>();
+          linkSet.add(linkTarget);
+          if (linkSet.size > 25) {
+            const values = Array.from(linkSet).slice(-25);
+            this.entityLinks.set(entity, new Set(values));
+          } else {
+            this.entityLinks.set(entity, linkSet);
+          }
+          if (nextRisk >= 4 && input.route === "QUARANTINE") {
+            this.blockedEntities.set(entity, Date.now() + 30 * 60 * 1000);
+          }
+        }
+        if (member && provider) {
+          const key = `pair:${member}->${provider}`;
+          const set = this.entityLinks.get(key) || new Set<string>();
+          set.add(linkTarget);
+          if (set.size > 25) {
+            this.entityLinks.set(key, new Set(Array.from(set).slice(-25)));
+          } else {
+            this.entityLinks.set(key, set);
+          }
+        }
+        if (member && ip) {
+          const key = `pair:${member}->${ip}`;
+          const set = this.entityLinks.get(key) || new Set<string>();
+          set.add(linkTarget);
+          if (set.size > 25) {
+            this.entityLinks.set(key, new Set(Array.from(set).slice(-25)));
+          } else {
+            this.entityLinks.set(key, set);
+          }
+        }
+
+        const needsCase = input.route === "REBALANCING" || input.route === "QUARANTINE";
+        if (!needsCase) return null;
+
+        const predicted = Number(input.predicted_prevented_loss || 0);
+        this.predictedPreventedLoss += predicted;
+
+        const fraudCase: FraudCaseRecord = {
+          id: `CASE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          created_at: Date.now(),
+          status: "OPEN_REVIEW",
+          route: input.route,
+          anomaly_index: input.anomaly_index,
+          claim_id: input.claim_id,
+          nonce: input.nonce,
+          entities: input.entities,
+          reasons: input.reasons || [],
+          predicted_prevented_loss: predicted,
+        };
+        this.fraudCases.set(fraudCase.id, fraudCase);
+        return fraudCase;
+      }
+
+      public reviewCase(caseId: string, verdict: FraudAnalystVerdict, confirmedLoss?: number): FraudCaseRecord | null {
+        const found = this.fraudCases.get(caseId);
+        if (!found) return null;
+        found.analyst_verdict = verdict;
+        found.reviewed_at = Date.now();
+        if (typeof confirmedLoss === "number" && Number.isFinite(confirmedLoss) && confirmedLoss >= 0) {
+          found.confirmed_loss = confirmedLoss;
+          this.confirmedPreventedLoss += confirmedLoss;
+        }
+
+        if (verdict === "TRUE_POSITIVE") {
+          found.status = "CONFIRMED_FRAUD";
+          this.reviewedFraud += 1;
+        } else if (verdict === "FALSE_POSITIVE") {
+          found.status = "CONFIRMED_BENIGN";
+          this.falsePositives += 1;
+          this.reviewedBenign += 1;
+          for (const entity of found.entities) {
+            this.entityRiskCounter.set(entity, Math.max(0, (this.entityRiskCounter.get(entity) || 0) - 2));
+            this.blockedEntities.delete(entity);
+          }
+        } else if (verdict === "FALSE_NEGATIVE") {
+          found.status = "CLOSED_UNRESOLVED";
+          this.falseNegatives += 1;
+          this.reviewedFraud += 1;
+        } else {
+          found.status = "CONFIRMED_BENIGN";
+          this.reviewedBenign += 1;
+        }
+
+        return found;
+      }
+
+      public listCases(status?: FraudCaseStatus): FraudCaseRecord[] {
+        const list = Array.from(this.fraudCases.values()).sort((a, b) => b.created_at - a.created_at);
+        return status ? list.filter((item) => item.status === status) : list;
+      }
+
+      public anchorMerkleRoot(root: string, source: string, metadata?: Record<string, any>): RootAnchorRecord {
+        const previous_anchor_hash = this.anchors.length ? this.anchors[this.anchors.length - 1].anchor_hash : "0".repeat(64);
+        const timestamp = Date.now();
+        const anchor_hash = crypto
+          .createHash("sha256")
+          .update(canonicalizeJson({ root, source, timestamp, previous_anchor_hash, metadata: metadata || null }))
+          .digest("hex");
+        const anchor: RootAnchorRecord = {
+          id: `ANCHOR-${timestamp}-${Math.floor(Math.random() * 1000)}`,
+          root,
+          source,
+          timestamp,
+          previous_anchor_hash,
+          anchor_hash,
+          metadata,
+        };
+        this.anchors.push(anchor);
+        if (this.anchors.length > 1000) this.anchors = this.anchors.slice(-1000);
+        return anchor;
+      }
+
+      public listAnchors(limit = 50): RootAnchorRecord[] {
+        return this.anchors.slice(-Math.max(1, Math.min(limit, 200))).reverse();
+      }
+
+      public getKpis() {
+        const reviewedTotal = this.reviewedFraud + this.reviewedBenign;
+        const truePositives = this.reviewedFraud - this.falseNegatives;
+        const precision = truePositives + this.falsePositives > 0 ? truePositives / (truePositives + this.falsePositives) : 0;
+        const recall = this.reviewedFraud > 0 ? truePositives / this.reviewedFraud : 0;
+        const preventedLossAccuracy =
+          this.predictedPreventedLoss > 0 ? this.confirmedPreventedLoss / this.predictedPreventedLoss : 0;
+
+        return {
+          totals: {
+            evaluated: this.totalEvaluated,
+            stable: this.totalStable,
+            rebalancing: this.totalRebalancing,
+            quarantine: this.totalQuarantine,
+            open_cases: this.listCases("OPEN_REVIEW").length,
+            blocked_entities: this.blockedEntities.size,
+            reviewed_cases: reviewedTotal,
+          },
+          model_quality: {
+            precision,
+            recall,
+            false_positive_rate: reviewedTotal > 0 ? this.falsePositives / reviewedTotal : 0,
+            false_negative_count: this.falseNegatives,
+          },
+          prevented_loss: {
+            predicted_total: Number(this.predictedPreventedLoss.toFixed(2)),
+            confirmed_total: Number(this.confirmedPreventedLoss.toFixed(2)),
+            accuracy_ratio: Number(preventedLossAccuracy.toFixed(4)),
+          },
+          adaptive_threshold: this.getAnomalyStats(),
+          active_blocklist: Array.from(this.blockedEntities.entries()).map(([entity, until]) => ({
+            entity,
+            blocked_until: until,
+          })),
+        };
+      }
+    }
+
+    const fraudIntel = new FraudIntelligenceEngine();
 
     if (targetIndex === -1) {
       throw new Error(`Claim ID '${targetClaimId}' not found in transaction batch.`);
@@ -620,6 +992,56 @@ app.use(formalInvariantGuard);
 
 let epochTransactions: any[] = [];
 
+function extractInboundSignature(req: Request): { signature: string | null; keyId: string | null; payload: any } {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const payload = body.payload && typeof body.payload === "object" ? body.payload : body;
+  const signatureHeader = req.headers["x-signature"];
+  const keyIdHeader = req.headers["x-key-id"];
+  const signature =
+    (typeof body.signature === "string" && body.signature) ||
+    (typeof payload.signature === "string" && payload.signature) ||
+    (typeof signatureHeader === "string" ? signatureHeader : null);
+  const keyId =
+    (typeof body.key_id === "string" && body.key_id) ||
+    (typeof payload.key_id === "string" && payload.key_id) ||
+    (typeof keyIdHeader === "string" ? keyIdHeader : null);
+  return { signature, keyId, payload };
+}
+
+function enforceMutualTlsProxyHeader(req: Request, res: Response): boolean {
+  if (!CONFIG.REQUIRE_MTLS) return true;
+  const v = req.headers[CONFIG.MTLS_PROXY_HEADER];
+  const value = Array.isArray(v) ? v[0] : v;
+  const ok = typeof value === "string" && value.toLowerCase() === "success";
+  if (!ok) {
+    res.status(401).json({
+      status: "UNAUTHORIZED_MTLS_REQUIRED",
+      http_code: 401,
+      message: "Mutual TLS verification is required and was not asserted by the trusted proxy.",
+      timestamp: Date.now(),
+    });
+    return false;
+  }
+  return true;
+}
+
+function enforceIngressReplayProtection(
+  nonceCandidate: unknown,
+  claimId: string | undefined,
+  amount: number | undefined
+): Promise<{ ok: true; nonce: string } | { ok: false }> {
+  return (async () => {
+    const nonce = typeof nonceCandidate === "string" ? nonceCandidate.trim() : "";
+    if (!nonce) return { ok: false };
+    const accepted = await settlementNonceStore.reserveAndCommit(`INGRESS:${nonce}`, {
+      claim_id: claimId,
+      amount,
+    });
+    if (!accepted) return { ok: false };
+    return { ok: true, nonce };
+  })();
+}
+
 // Health Check API
 app.get(["/api/v1/health", "/api/health"], (req, res) => {
   res.status(200).json({
@@ -636,13 +1058,57 @@ app.get(["/api/v1/health", "/api/health"], (req, res) => {
       formal_invariant_guard: true,
       strict_type_narrowed_mutex: true,
       env_type_guards: true,
+      adaptive_fraud_intelligence: true,
+      analyst_case_management: true,
+      merkle_root_anchoring: true,
     },
+    fraud_kpi_snapshot: fraudIntel.getKpis().totals,
   });
 });
 
 // Live Ingress HTTP Endpoint (/api/v1/ingress)
 app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
   try {
+    if (!enforceMutualTlsProxyHeader(req, res)) return;
+
+    const { signature, keyId, payload } = extractInboundSignature(req);
+    if (!signature) {
+      return res.status(401).json({
+        status: "UNAUTHORIZED_MISSING_SIGNATURE",
+        http_code: 401,
+        message: "A cryptographic signature is required for ingress mutation requests.",
+        timestamp: Date.now(),
+      });
+    }
+    const payloadForSig = { ...payload };
+    delete payloadForSig.signature;
+    const isHmacValid = verifyCryptographicHmac(canonicalizeJson(payloadForSig), signature, { keyId });
+    if (!isHmacValid) {
+      return res.status(401).json({
+        status: "UNAUTHORIZED_INVALID_SIGNATURE",
+        http_code: 401,
+        key_id: keyId || undefined,
+        message: "Ingress signature validation failed.",
+        timestamp: Date.now(),
+      });
+    }
+
+    const nonceCandidate = req.body?.nonce || req.body?.header?.nonce || req.headers["x-ingress-nonce"];
+    const replay = await enforceIngressReplayProtection(
+      nonceCandidate,
+      req.body?.claim_id || req.body?.payload?.claim_id,
+      Number(req.body?.claimed_amount ?? req.body?.billed_amount ?? 0)
+    );
+    if (!replay.ok) {
+      return res.status(409).json({
+        status: "REPLAY_REJECTED",
+        http_code: 409,
+        message: "Ingress nonce is missing, invalid, or already used.",
+        state_bleed: 0.0,
+        timestamp: Date.now(),
+      });
+    }
+
     let gate1Result: any = null;
     try {
       gate1Result = await runGate1Script("validate", JSON.stringify(req.body));
@@ -659,7 +1125,34 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
       });
     }
 
-    if (gate1Result && gate1Result.status === "QUARANTINE") {
+    // Use socket.remoteAddress for security; x-forwarded-for only for audit logging
+    const clientIp = req.socket.remoteAddress || "127.0.0.1";
+    const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
+    const userAgent = (req.headers["user-agent"] as string) || "HTTP-Ingress-Client/2.5";
+
+    const adaptive = fraudIntel.adjustAnomalyIndex(Number(gate1Result?.anomaly_index ?? 0), req.body, { ip: auditIp });
+    gate1Result.anomaly_index = adaptive.anomaly_index;
+    gate1Result.reasons = [...(Array.isArray(gate1Result?.reasons) ? gate1Result.reasons : []), ...adaptive.reasons];
+    if (adaptive.blocked) {
+      gate1Result.status = "QUARANTINE";
+      gate1Result.route = "HONEYPOT_SANDBOX";
+      gate1Result.http_code = 403;
+      gate1Result.passed = false;
+      gate1Result.state_bleed = 0.0;
+    }
+
+    const mustQuarantine = gate1Result && (gate1Result.status === "QUARANTINE" || gate1Result.anomaly_index > 750);
+    if (mustQuarantine) {
+      const createdCase = fraudIntel.recordEvent({
+        route: "QUARANTINE",
+        anomaly_index: Number(gate1Result.anomaly_index || 0),
+        entities: adaptive.entities,
+        claim_id: req.body?.claim_id || req.body?.payload?.claim_id,
+        nonce: replay.nonce,
+        reasons: gate1Result.reasons,
+        predicted_prevented_loss: Number(gate1Result?.prevented_financial_loss || 0),
+      });
+
       const quarantineEvent = {
         type: "INGRESS_EVENT",
         id: `G1-HTTP-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -676,6 +1169,7 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
         prevented_financial_loss: gate1Result.prevented_financial_loss,
         gate1_metrics: gate1Result,
         active_connections: wsClientRegistry.size,
+        case_id: createdCase?.id,
       };
 
       broadcastIngressEvent(quarantineEvent);
@@ -689,14 +1183,11 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
         prevented_financial_loss: gate1Result.prevented_financial_loss,
         decoy_response: gate1Result.synthetic_decoy,
         reasons: gate1Result.reasons,
+        case_id: createdCase?.id,
+        nonce: replay.nonce,
         timestamp: Date.now(),
       });
     }
-
-    // Use socket.remoteAddress for security; x-forwarded-for only for audit logging
-    const clientIp = req.socket.remoteAddress || "127.0.0.1";
-    const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
-    const userAgent = (req.headers["user-agent"] as string) || "HTTP-Ingress-Client/2.5";
 
     const requestPayload = {
       ip: auditIp,
@@ -713,8 +1204,22 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
 
     const result = await runPythonEngine("process_request", JSON.stringify(requestPayload));
     const routeResult = result.route_result || {};
-    const statusTier = routeResult.status || (routeResult.diverted ? "QUARANTINE" : "STABLE");
+    let statusTier = routeResult.status || (routeResult.diverted ? "QUARANTINE" : "STABLE");
+    if (gate1Result.anomaly_index > 750) {
+      statusTier = "QUARANTINE";
+    } else if (gate1Result.anomaly_index >= 250 && statusTier === "STABLE") {
+      statusTier = "REBALANCING";
+    }
     const httpStatusCode = routeResult.http_code || (statusTier === "QUARANTINE" ? 403 : statusTier === "REBALANCING" ? 202 : 200);
+    const createdCase = fraudIntel.recordEvent({
+      route: statusTier === "QUARANTINE" ? "QUARANTINE" : statusTier === "REBALANCING" ? "REBALANCING" : "STABLE",
+      anomaly_index: Number(gate1Result.anomaly_index || 0),
+      entities: adaptive.entities,
+      claim_id: req.body?.claim_id || req.body?.payload?.claim_id,
+      nonce: replay.nonce,
+      reasons: gate1Result.reasons,
+      predicted_prevented_loss: Number(gate1Result?.prevented_financial_loss || 0),
+    });
 
     const ingressEvent = {
       type: "INGRESS_EVENT",
@@ -732,6 +1237,7 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
       kernel_state: result.full?.kernel,
       gate1_metrics: gate1Result,
       active_connections: wsClientRegistry.size,
+      case_id: createdCase?.id,
     };
 
     broadcastIngressEvent(ingressEvent);
@@ -748,6 +1254,8 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
       route_result: routeResult,
       kernel_state: result.full?.kernel,
       gate1_metrics: gate1Result,
+      case_id: createdCase?.id,
+      nonce: replay.nonce,
       timestamp: Date.now(),
     });
   } catch (err: any) {
@@ -759,6 +1267,29 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
 // Sovereign Trust Settlement & Fraud Interception Endpoint (/api/v1/settlement/process)
 app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimiter, async (req, res) => {
   try {
+    if (!enforceMutualTlsProxyHeader(req, res)) return;
+    const { signature, keyId, payload } = extractInboundSignature(req);
+    if (!signature) {
+      return res.status(401).json({
+        status: "UNAUTHORIZED_MISSING_SIGNATURE",
+        http_code: 401,
+        message: "A cryptographic signature is required for settlement mutation requests.",
+        timestamp: Date.now(),
+      });
+    }
+    const payloadForSig = { ...payload };
+    delete payloadForSig.signature;
+    const validSig = verifyCryptographicHmac(canonicalizeJson(payloadForSig), signature, { keyId });
+    if (!validSig) {
+      return res.status(401).json({
+        status: "UNAUTHORIZED_INVALID_SIGNATURE",
+        http_code: 401,
+        key_id: keyId || undefined,
+        message: "Settlement signature validation failed.",
+        timestamp: Date.now(),
+      });
+    }
+
     const claimId = req.body.claim_id || `CLAIM-${Date.now()}`;
     const claimedAmount = Number(req.body.claimed_amount ?? req.body.billed_amount ?? 100000.0);
     const extractionRate = Number(req.body.extraction_rate ?? 0.05);
@@ -780,6 +1311,11 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
         timestamp: Date.now(),
       });
     }
+    const clientIp = req.socket.remoteAddress || "127.0.0.1";
+    const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
+    const adaptive = fraudIntel.adjustAnomalyIndex(Number(gate1Result?.anomaly_index ?? 0), req.body, { ip: auditIp });
+    gate1Result.anomaly_index = adaptive.anomaly_index;
+    gate1Result.reasons = [...(Array.isArray(gate1Result?.reasons) ? gate1Result.reasons : []), ...adaptive.reasons];
     const anomalyIndex = Number(gate1Result?.anomaly_index ?? 0);
 
     const isCommitted = await settlementNonceStore.reserveAndCommit(nonce, { claim_id: claimId, amount: claimedAmount });
@@ -815,6 +1351,23 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
       }
 
       const blockHash = crypto.createHash("sha256").update(canonicalizeJson(recordPayload)).digest("hex");
+      const merkleRoot = MerkleTreeProofEngine.computeRoot(
+        epochTransactions.map((tx) => crypto.createHash("sha256").update(canonicalizeJson(tx)).digest("hex"))
+      );
+      const anchor = fraudIntel.anchorMerkleRoot(merkleRoot, "settlement_epoch", {
+        claim_id: claimId,
+        nonce,
+        tx_count: epochTransactions.length,
+      });
+      const createdCase = fraudIntel.recordEvent({
+        route: "QUARANTINE",
+        anomaly_index: anomalyIndex,
+        entities: adaptive.entities,
+        claim_id: claimId,
+        nonce,
+        reasons: gate1Result.reasons,
+        predicted_prevented_loss: preservedCapital,
+      });
 
       const settlementResult = {
         status: "FRAUD_INTERCEPTED",
@@ -829,6 +1382,8 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
         net_carrier_savings: netCarrierSavings,
         sovereign_trust_vault_increment: extractedYield,
         block_hash: blockHash,
+        merkle_root_anchor: anchor.anchor_hash,
+        case_id: createdCase?.id,
         state_bleed: 0.0,
         timestamp: Date.now(),
       };
@@ -849,6 +1404,14 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
     }
 
     if (anomalyIndex >= 500) {
+      const createdCase = fraudIntel.recordEvent({
+        route: "REBALANCING",
+        anomaly_index: anomalyIndex,
+        entities: adaptive.entities,
+        claim_id: claimId,
+        nonce,
+        reasons: gate1Result.reasons,
+      });
       return res.status(200).json({
         status: "ESCROW_REVIEW_REQUIRED",
         disposition: "GATE_1_HEURISTIC_ESCROW",
@@ -857,10 +1420,21 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
         nonce,
         claimed_amount: claimedAmount,
         anomaly_index: anomalyIndex,
+        reasons: gate1Result.reasons,
+        case_id: createdCase?.id,
         state_bleed: 0.0,
         timestamp: Date.now(),
       });
     }
+
+    fraudIntel.recordEvent({
+      route: "STABLE",
+      anomaly_index: anomalyIndex,
+      entities: adaptive.entities,
+      claim_id: claimId,
+      nonce,
+      reasons: gate1Result.reasons,
+    });
 
     return res.status(200).json({
       status: "VERIFIED_PASS_STANDARD_SETTLEMENT",
@@ -870,6 +1444,7 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
       nonce,
       anomaly_index: anomalyIndex,
       claimed_amount: claimedAmount,
+      reasons: gate1Result.reasons,
       state_bleed: 0.0,
       timestamp: Date.now(),
     });
@@ -907,6 +1482,72 @@ app.post("/api/v1/settlement/verify-proof", (req, res) => {
     console.error("Proof verification error:", err);
     res.status(500).json({ error: "Proof verification error" });
   }
+});
+
+// Fraud intelligence KPIs and analyst workflow APIs
+app.get("/api/v1/fraud/kpis", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    kpis: fraudIntel.getKpis(),
+    timestamp: Date.now(),
+  });
+});
+
+app.get("/api/v1/fraud/cases", (req, res) => {
+  const statusFilter = typeof req.query.status === "string" ? (req.query.status as FraudCaseStatus) : undefined;
+  const cases = fraudIntel.listCases(statusFilter);
+  res.status(200).json({
+    status: "OK",
+    count: cases.length,
+    cases,
+    timestamp: Date.now(),
+  });
+});
+
+app.post("/api/v1/fraud/cases/:caseId/review", mutationLimiter, (req, res) => {
+  const caseId = req.params.caseId;
+  const verdict = req.body?.verdict as FraudAnalystVerdict;
+  if (!["TRUE_POSITIVE", "FALSE_POSITIVE", "FALSE_NEGATIVE", "BENIGN_TRUE_NEGATIVE"].includes(verdict)) {
+    return res.status(400).json({
+      status: "INVALID_VERDICT",
+      message: "verdict must be one of TRUE_POSITIVE, FALSE_POSITIVE, FALSE_NEGATIVE, BENIGN_TRUE_NEGATIVE.",
+    });
+  }
+  const reviewed = fraudIntel.reviewCase(caseId, verdict, Number.isFinite(Number(req.body?.confirmed_loss)) ? Number(req.body.confirmed_loss) : undefined);
+  if (!reviewed) {
+    return res.status(404).json({ status: "CASE_NOT_FOUND", case_id: caseId });
+  }
+  return res.status(200).json({
+    status: "REVIEW_RECORDED",
+    case: reviewed,
+    kpis: fraudIntel.getKpis(),
+    timestamp: Date.now(),
+  });
+});
+
+app.post("/api/v1/settlement/anchor-root", mutationLimiter, (req, res) => {
+  const merkleRoot = typeof req.body?.merkle_root === "string" ? req.body.merkle_root : "";
+  if (!/^[a-f0-9]{64}$/i.test(merkleRoot)) {
+    return res.status(400).json({ status: "INVALID_MERKLE_ROOT", message: "merkle_root must be a 64-char hex string." });
+  }
+  const anchor = fraudIntel.anchorMerkleRoot(merkleRoot, "manual_anchor", {
+    actor: req.body?.actor || "unknown",
+    note: req.body?.note || null,
+  });
+  return res.status(200).json({
+    status: "ANCHORED",
+    anchor,
+    timestamp: Date.now(),
+  });
+});
+
+app.get("/api/v1/settlement/anchors", (req, res) => {
+  const limit = Number(req.query.limit || 50);
+  return res.status(200).json({
+    status: "OK",
+    anchors: fraudIntel.listAnchors(limit),
+    timestamp: Date.now(),
+  });
 });
 
 // WebSocket Server Integration
@@ -1007,9 +1648,72 @@ wss.on("connection", (ws, req) => {
       }
 
       const payloadObj = body.payload || body;
-      const isHighAnomalyOrQuarantine = gate1Result && gate1Result.status === "QUARANTINE";
+      const signature =
+        (typeof body.signature === "string" && body.signature) ||
+        (typeof payloadObj.signature === "string" && payloadObj.signature) ||
+        null;
+      const keyId =
+        (typeof body.key_id === "string" && body.key_id) ||
+        (typeof payloadObj.key_id === "string" && payloadObj.key_id) ||
+        null;
+      if (!signature) {
+        ws.send(JSON.stringify({ type: "UNAUTHORIZED", status: "UNAUTHORIZED_MISSING_SIGNATURE", state_bleed: 0.0 }));
+        return;
+      }
+      const payloadForSig = { ...payloadObj };
+      delete payloadForSig.signature;
+      const isSigValid = verifyCryptographicHmac(canonicalizeJson(payloadForSig), signature, { keyId });
+      if (!isSigValid) {
+        ws.send(
+          JSON.stringify({
+            type: "UNAUTHORIZED",
+            status: "UNAUTHORIZED_INVALID_SIGNATURE",
+            key_id: keyId || undefined,
+            state_bleed: 0.0,
+          })
+        );
+        return;
+      }
+
+      const replay = await enforceIngressReplayProtection(
+        body.nonce || payloadObj.nonce,
+        body.claim_id || payloadObj.claim_id,
+        Number(body.claimed_amount ?? payloadObj.claimed_amount ?? body.billed_amount ?? payloadObj.billed_amount ?? 0)
+      );
+      if (!replay.ok) {
+        ws.send(
+          JSON.stringify({
+            type: "REPLAY_REJECTED",
+            status: "REPLAY_REJECTED",
+            state_bleed: 0.0,
+            message: "Ingress nonce is missing, invalid, or already used.",
+          })
+        );
+        return;
+      }
+
+      // Use socket address for security; x-forwarded-for only for audit logging
+      const clientIp = req.socket.remoteAddress || "127.0.0.1";
+      const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
+      const adaptive = fraudIntel.adjustAnomalyIndex(Number(gate1Result?.anomaly_index ?? 0), payloadObj, { ip: auditIp });
+      gate1Result.anomaly_index = adaptive.anomaly_index;
+      gate1Result.reasons = [...(Array.isArray(gate1Result?.reasons) ? gate1Result.reasons : []), ...adaptive.reasons];
+      if (adaptive.blocked) {
+        gate1Result.status = "QUARANTINE";
+        gate1Result.route = "HONEYPOT_SANDBOX";
+      }
+      const isHighAnomalyOrQuarantine = gate1Result && (gate1Result.status === "QUARANTINE" || gate1Result.anomaly_index > 750);
 
       if (isHighAnomalyOrQuarantine) {
+        const createdCase = fraudIntel.recordEvent({
+          route: "QUARANTINE",
+          anomaly_index: Number(gate1Result.anomaly_index || 0),
+          entities: adaptive.entities,
+          claim_id: body.claim_id || payloadObj.claim_id,
+          nonce: replay.nonce,
+          reasons: gate1Result.reasons,
+          predicted_prevented_loss: Number(gate1Result?.prevented_financial_loss || 0),
+        });
         const quarantineEvent = {
           type: "INGRESS_EVENT",
           id: `G1-WS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1026,6 +1730,7 @@ wss.on("connection", (ws, req) => {
           prevented_financial_loss: gate1Result.prevented_financial_loss,
           gate1_metrics: gate1Result,
           active_connections: wsClientRegistry.size,
+          case_id: createdCase?.id,
         };
 
         broadcastIngressEvent(quarantineEvent);
@@ -1039,14 +1744,13 @@ wss.on("connection", (ws, req) => {
             prevented_financial_loss: gate1Result.prevented_financial_loss,
             decoy_response: gate1Result.synthetic_decoy,
             reasons: gate1Result.reasons,
+            case_id: createdCase?.id,
+            nonce: replay.nonce,
           })
         );
         return;
       }
 
-      // Use socket address for security; x-forwarded-for only for audit logging
-      const clientIp = req.socket.remoteAddress || "127.0.0.1";
-      const auditIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || clientIp;
       const requestPayload = {
         ip: auditIp,
         user_agent: (req.headers["user-agent"] as string) || "WebSocket-Live-Client/1.0",
@@ -1055,7 +1759,23 @@ wss.on("connection", (ws, req) => {
       };
 
       const result = await runPythonEngine("process_request", JSON.stringify(requestPayload));
-      const isDiverted = result.route_result?.diverted;
+      const routeResult = result.route_result || {};
+      const statusTier =
+        gate1Result.anomaly_index >= 250
+          ? "REBALANCING"
+          : routeResult.diverted
+          ? "QUARANTINE"
+          : "STABLE";
+      const createdCase = fraudIntel.recordEvent({
+        route: statusTier === "QUARANTINE" ? "QUARANTINE" : statusTier === "REBALANCING" ? "REBALANCING" : "STABLE",
+        anomaly_index: Number(gate1Result.anomaly_index || 0),
+        entities: adaptive.entities,
+        claim_id: body.claim_id || payloadObj.claim_id,
+        nonce: replay.nonce,
+        reasons: gate1Result.reasons,
+        predicted_prevented_loss: Number(gate1Result?.prevented_financial_loss || 0),
+      });
+      const isDiverted = routeResult?.diverted;
 
       const ingressEvent = {
         type: "INGRESS_EVENT",
@@ -1068,10 +1788,11 @@ wss.on("connection", (ws, req) => {
         route: isDiverted ? "HONEYPOT_SYNTHETIC_PLAYGROUND" : "CORE_KERNEL",
         reason: result.route_result?.message || "Gate 1 Verification Passed",
         block_hash: result.route_result?.ledger_block?.hash || result.route_result?.decoy_response?.synthetic_ledger_hash,
-        route_result: result.route_result,
+        route_result: routeResult,
         kernel_state: result.full?.kernel,
         gate1_metrics: gate1Result,
         active_connections: wsClientRegistry.size,
+        case_id: createdCase?.id,
       };
 
       broadcastIngressEvent(ingressEvent);

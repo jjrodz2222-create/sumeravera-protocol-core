@@ -29,6 +29,8 @@ SumerAvera Protocol Core is a full-stack framework that combines a **TypeScript/
 - **Deterministic Settlement** — nonce-idempotent claim processing backed by a Write-Ahead Log (WAL) and a Merkle-tree proof engine for O(log N) state verification.
 - **SHA-256 State Ledger** — an append-only, hash-chained ledger that records every state transition for immutable audit.
 - **Truth Verification Engine** — a formal TLA⁺-inspired specification layer that inspects proof records against protocol invariants.
+- **Adaptive Fraud Intelligence** — rolling anomaly baseline, entity-link analysis, and automated risk escalation / temporary blocking.
+- **Analyst Review Workflow** — built-in fraud case queue with verdict feedback to improve precision and reduce false positives.
 
 The framework is designed for research, simulation, and protocol validation workloads.
 
@@ -97,6 +99,14 @@ Each ingress event carries a unique cryptographic nonce. The `RobustSettlementWA
 ```
 
 Duplicate submissions are rejected, preventing replay attacks.
+
+### Adaptive Drift & Entity-Link Risk
+
+Ingress scoring is post-processed by an adaptive intelligence layer that:
+
+- Tracks rolling anomaly distribution and boosts risk on drift spikes.
+- Correlates entities (`agent_id`, `member_id`, `provider_npi`, `device_id`, `ip`) to detect repeated link patterns consistent with coordinated fraud rings.
+- Temporarily auto-blocks entities with repeated quarantine outcomes.
 
 ### Merkle State Verification
 
@@ -187,6 +197,11 @@ Runs a standalone throughput benchmark of the Python mathematical engines withou
 | `POST` | `/api/v1/ingress` | Submit a signed ingress payload |
 | `POST` | `/api/v1/settlement/process` | Process a claim settlement (includes Gate 1 scoring) |
 | `GET`  | `/api/v1/settlement/proof/:claimId` | Fetch Merkle inclusion proof for a claim |
+| `POST` | `/api/v1/settlement/anchor-root` | Anchor a Merkle root into protocol anchor chain |
+| `GET`  | `/api/v1/settlement/anchors` | Retrieve recent root anchors |
+| `GET`  | `/api/v1/fraud/kpis` | Get fraud precision/recall and prevented-loss KPIs |
+| `GET`  | `/api/v1/fraud/cases` | List fraud analyst cases |
+| `POST` | `/api/v1/fraud/cases/:caseId/review` | Submit analyst verdict feedback |
 | `WS`   | `/ws/ingress` | Real-time ingress event stream |
 
 ---
@@ -241,6 +256,10 @@ Copy `.env.example` to `.env` and customise the values below. **Never commit rea
 | `WAL_LOG_PATH` | Path to Write-Ahead Log file | `./python/settlement_wal.log` |
 | `ENABLE_HONEYPOT_DIVERSION` | Route anomalous payloads to honeypot subsystem | `true` |
 | `STATE_LEDGER_ENFORCE_INVARIANTS` | Enforce protocol invariants at runtime | `true` |
+| `SUMER_HMAC_KEYRING_JSON` | JSON map of `{ key_id: secret }` for key rotation | — |
+| `SUMER_REVOKED_KEY_IDS` | Comma-separated revoked `key_id` list | — |
+| `SUMER_REQUIRE_MTLS` | Require trusted proxy mTLS assertion on mutation APIs | `false` |
+| `SUMER_MTLS_PROXY_HEADER` | Header name carrying trusted mTLS assertion | `x-mtls-client-verified` |
 | `GEMINI_API_KEY` | Google Gemini API key (AI-assisted analysis) | — |
 | `SUMER_SALT` | Salt for pseudonymisation operations | insecure dev default |
 
@@ -251,9 +270,15 @@ All secret variables must be at least **16 characters** long. The server perform
 ## Security Considerations
 
 - **HMAC-SHA256 message authentication** — all API requests that mutate state require a valid HMAC signature. Verification uses `crypto.timingSafeEqual` to resist timing-oracle attacks.
+- **Key rotation + revocation support** — mutation APIs accept `key_id` selection via keyring configuration and reject revoked key IDs.
+- **Optional mTLS enforcement hook** — when enabled, mutation APIs require a trusted proxy mTLS-verification header.
 - **Nonce replay defence** — the `RobustSettlementWALStore` rejects duplicate nonces, enforcing exactly-once semantics and preventing replay attacks.
+- **Ingress replay defence** — ingress APIs and WebSocket mutation flow now require nonce deduplication, extending replay protection beyond settlement.
 - **Three-tier anomaly routing** — payloads with an anomaly index above 750 are fully isolated (`state_bleed = 0.0`); they cannot mutate internal state.
+- **Adaptive risk controls** — drift-sensitive anomaly escalation, entity-link correlation, and temporary auto-blocking reduce repeated fraud penetration attempts.
+- **Analyst feedback loop** — case review verdicts feed KPI telemetry (precision/recall/false positives) for threshold tuning.
 - **Honeypot diversion** — when `ENABLE_HONEYPOT_DIVERSION=true`, anomalous payloads are silently redirected to an observation subsystem rather than rejected outright, facilitating threat intelligence collection.
+- **Anchor-chain audit trust** — Merkle roots can be chained into anchor records (`previous_anchor_hash -> anchor_hash`) for independent audit verification.
 - **Write-Ahead Logging (WAL)** — all settlement state is persisted to a WAL before acknowledgement. On restart, the WAL is replayed to recover full nonce and settlement state, preventing data loss from crashes.
 - **Helmet middleware** — standard HTTP security headers (`Content-Security-Policy`, `X-Frame-Options`, etc.) are applied to every response via the `helmet` package.
 - **Rate limiting** — `express-rate-limit` constrains inbound request volume to protect against denial-of-service payloads.
