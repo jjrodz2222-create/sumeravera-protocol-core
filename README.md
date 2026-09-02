@@ -17,6 +17,7 @@
 7. [Configuration](#configuration)
 8. [Security Considerations](#security-considerations)
 9. [Contributing](#contributing)
+10. [Governance Rollout Artifacts](#governance-rollout-artifacts)
 
 ---
 
@@ -294,6 +295,13 @@ All secret variables must be at least **16 characters** long. The server perform
 4. Add or update tests for any new behaviour in `test/invariants.test.mjs`.
 5. Ensure `npm run lint` and `npm run build` pass without errors.
 6. Open a pull request describing the change and the invariants it affects. 
+
+## Governance Rollout Artifacts
+
+- RFC brief: `/docs/governance/fraud-defense-rfc.md`
+- Governance issue draft body: `/docs/governance/fraud-defense-issue-template.md`
+- GitHub issue template: `/.github/ISSUE_TEMPLATE/fraud-defense-governance.md`
+- Pilot + phased rollout runbook: `/docs/governance/fraud-defense-rollout-runbook.md`
 
 ## Android Module
 
