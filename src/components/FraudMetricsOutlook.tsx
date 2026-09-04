@@ -81,13 +81,13 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
 
   const futureEstimateData = useMemo(() => {
     const baseLeakage = Number((100 - modeledContainmentAnchor).toFixed(1));
-    const leakageDecay = [1, 0.94, 0.9, 0.86, 0.82];
+    const leakagePressureFactors = [1, 1.04, 1.08, 1.12, 1.16];
     const projections = [
       { year: "2026", fraudPressureIndex: 100, currentTechLeakage: 33, sumerAveraLeakage: baseLeakage },
-      { year: "2027", fraudPressureIndex: 111, currentTechLeakage: 35, sumerAveraLeakage: Number((baseLeakage * leakageDecay[1]).toFixed(1)) },
-      { year: "2028", fraudPressureIndex: 123, currentTechLeakage: 37, sumerAveraLeakage: Number((baseLeakage * leakageDecay[2]).toFixed(1)) },
-      { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: Number((baseLeakage * leakageDecay[3]).toFixed(1)) },
-      { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: Number((baseLeakage * leakageDecay[4]).toFixed(1)) },
+      { year: "2027", fraudPressureIndex: 111, currentTechLeakage: 35, sumerAveraLeakage: Number((baseLeakage * leakagePressureFactors[1]).toFixed(1)) },
+      { year: "2028", fraudPressureIndex: 123, currentTechLeakage: 37, sumerAveraLeakage: Number((baseLeakage * leakagePressureFactors[2]).toFixed(1)) },
+      { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: Number((baseLeakage * leakagePressureFactors[3]).toFixed(1)) },
+      { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: Number((baseLeakage * leakagePressureFactors[4]).toFixed(1)) },
     ];
     const baselinePreventedLossM = liveFraudSignals.hasLivePreventedLossTelemetry ? liveFraudSignals.preventedLoss / 1000000 : null;
     const baselineContainment = 100 - projections[0].sumerAveraLeakage;
@@ -124,6 +124,20 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     if (name.includes("($M)")) return [`$${value}M`, name];
     if (name.includes("%")) return [`${value}%`, name];
     return [value, name];
+  };
+  const attackVectorTick = ({ x, y, payload }: any) => {
+    const words = String(payload.value).split(" ");
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text fill={theme.axis} fontSize={10} textAnchor="middle">
+          {words.map((word, index) => (
+            <tspan key={`${payload.value}-${index}`} x="0" dy={index === 0 ? 12 : 11}>
+              {word}
+            </tspan>
+          ))}
+        </text>
+      </g>
+    );
   };
 
   return (
@@ -214,7 +228,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={capabilityGapData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                 <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
-                <XAxis dataKey="vector" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 10 }} interval={0} height={72} />
+                <XAxis dataKey="vector" stroke={theme.axis} tick={attackVectorTick} interval={0} height={84} />
                 <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
