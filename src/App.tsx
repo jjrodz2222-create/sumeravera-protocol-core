@@ -12,12 +12,13 @@ import { SecurityReportView } from "./components/SecurityReportView";
 import { HistoricalTrendsView } from "./components/HistoricalTrendsView";
 import { ClientEvaluationWidget } from "./components/ClientEvaluationWidget";
 import { SumerAveraMobilePocWidget } from "./components/SumerAveraMobilePocWidget";
+import { FraudMetricsOutlook } from "./components/FraudMetricsOutlook";
 import { Activity, ShieldCheck, Flame, Layers, Terminal, RefreshCw, Cpu, Radio, ShieldAlert, Award, TrendingUp, SlidersHorizontal, Smartphone } from "lucide-react";
 
 export default function App() {
   const [status, setStatus] = useState<SumerAveraStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<"mobile_poc" | "widget" | "gate1" | "kernel" | "history" | "truth" | "gateway" | "ledger" | "report" | "logs">("mobile_poc");
+  const [activeTab, setActiveTab] = useState<"mobile_poc" | "widget" | "gate1" | "kernel" | "history" | "fraud" | "truth" | "gateway" | "ledger" | "report" | "logs">("mobile_poc");
   const [autoStep, setAutoStep] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -327,6 +328,19 @@ export default function App() {
           </button>
 
           <button
+            id="tab-fraud-metrics-btn"
+            onClick={() => setActiveTab("fraud")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+              activeTab === "fraud"
+                ? "bg-amber-950 text-amber-300 border border-amber-800 shadow-md shadow-amber-950/50"
+                : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200"
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-amber-400" />
+            <span>Fraud Metrics Outlook</span>
+          </button>
+
+          <button
             id="tab-truth-btn"
             onClick={() => setActiveTab("truth")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
@@ -431,6 +445,10 @@ export default function App() {
 
             {activeTab === "history" && (
               <HistoricalTrendsView kernel={status.kernel} onStep={handleManualStep} loading={loading} />
+            )}
+
+            {activeTab === "fraud" && (
+              <FraudMetricsOutlook gateway={status.gateway} />
             )}
 
             {activeTab === "truth" && (
