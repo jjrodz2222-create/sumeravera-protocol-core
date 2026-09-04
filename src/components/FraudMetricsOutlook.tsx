@@ -99,7 +99,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               (
                 baselinePreventedLossM *
                 (entry.fraudPressureIndex / 100) *
-                ((100 - entry.sumerAveraLeakage) / Math.max(baselineContainment, 1)) *
+                (baselineContainment > 0 ? (100 - entry.sumerAveraLeakage) / baselineContainment : 1) *
                 (1 + index * 0.03)
               ).toFixed(2)
             ),
