@@ -39,8 +39,8 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     const totalRequests = rawTotalRequests ?? 0;
     const divertedThreats = rawDivertedThreats ?? 0;
     const preventedLoss = rawPreventedLoss ?? 0;
-    const hasLiveContainmentTelemetry = typeof rawTotalRequests !== "undefined" && typeof rawDivertedThreats !== "undefined";
-    const hasLivePreventedLossTelemetry = typeof rawPreventedLoss !== "undefined";
+    const hasLiveContainmentTelemetry = rawTotalRequests != null && rawDivertedThreats != null;
+    const hasLivePreventedLossTelemetry = rawPreventedLoss != null;
     const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 0;
 
     return {
@@ -214,7 +214,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={capabilityGapData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                 <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
-                <XAxis dataKey="vector" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 10 }} angle={-12} textAnchor="end" height={60} />
+                <XAxis dataKey="vector" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 10 }} interval={0} height={72} />
                 <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
