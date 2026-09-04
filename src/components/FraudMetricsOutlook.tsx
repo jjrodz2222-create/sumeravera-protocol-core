@@ -22,7 +22,7 @@ interface FraudMetricsOutlookProps {
 
 export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gateway }) => {
   const liveFraudSignals = useMemo(() => {
-    const totalRequests = gateway?.stats?.total_requests || 2222;
+    const totalRequests = gateway?.stats?.total_requests ?? 2222;
     const divertedThreats =
       gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted ?? 42;
     const preventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss ?? 95000;
@@ -32,7 +32,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       totalRequests,
       divertedThreats,
       preventedLoss,
-      isolationRate: Number(Math.max(isolationRate, 96.8).toFixed(1)),
+      isolationRate: Number(isolationRate.toFixed(1)),
     };
   }, [gateway]);
 
@@ -178,7 +178,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
           <h2 className="text-base font-bold text-slate-100">2026–2030 Future Estimate</h2>
           <p className="text-xs text-slate-400">Modeled leakage stays materially lower under SumerAvera while prevented-loss capacity scales with rising fraud pressure.</p>
         </div>
-        <div className="h-88">
+        <div className="h-[22rem]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={futureEstimateData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
               <defs>
