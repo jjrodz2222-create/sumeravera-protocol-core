@@ -448,7 +448,7 @@ export default function App() {
             )}
 
             {activeTab === "fraud" && (
-              <FraudMetricsOutlook gateway={status.gateway} />
+              <FraudMetricsOutlook gateway={status.gateway ?? null} />
             )}
 
             {activeTab === "truth" && (

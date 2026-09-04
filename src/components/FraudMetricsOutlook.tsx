@@ -18,7 +18,7 @@ import {
 } from "recharts";
 
 interface FraudMetricsOutlookProps {
-  gateway: GatewayInfo;
+  gateway?: GatewayInfo | null;
 }
 
 export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gateway }) => {
@@ -27,15 +27,16 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     const divertedThreats =
       gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted ?? 0;
     const preventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss ?? 0;
-    const hasLiveTelemetry =
+    const hasLiveContainmentTelemetry =
       gateway?.stats?.total_requests !== undefined ||
       gateway?.stats?.honeypot_diverted !== undefined ||
-      gateway?.loss_prevention_metrics?.quarantine_count !== undefined ||
-      gateway?.loss_prevention_metrics?.total_prevented_financial_loss !== undefined;
+      gateway?.loss_prevention_metrics?.quarantine_count !== undefined;
+    const hasLivePreventedLossTelemetry = gateway?.loss_prevention_metrics?.total_prevented_financial_loss !== undefined;
     const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 0;
 
     return {
-      hasLiveTelemetry,
+      hasLiveContainmentTelemetry,
+      hasLivePreventedLossTelemetry,
       totalRequests,
       divertedThreats,
       preventedLoss,
@@ -43,7 +44,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     };
   }, [gateway]);
 
-  const modeledContainmentAnchor = liveFraudSignals.hasLiveTelemetry ? liveFraudSignals.isolationRate : 98.4;
+  const modeledContainmentAnchor = liveFraudSignals.hasLiveContainmentTelemetry ? liveFraudSignals.isolationRate : 98.4;
 
   const historicalFraudTrend = useMemo(
     () => [
@@ -77,7 +78,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: 2.0 },
       { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: 1.8 },
     ];
-    const baselinePreventedLossM = Math.max(liveFraudSignals.preventedLoss / 1000000, 0.1);
+    const baselinePreventedLossM = liveFraudSignals.preventedLoss / 1000000;
 
     return projections.map((entry, index) => ({
       ...entry,
@@ -106,7 +107,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               Historical and forward-looking fraud charts benchmark current anti-fraud technology against SumerAvera Gate 1 containment, using live protocol telemetry as the 2026 anchor.
             </p>
             <p className="text-xs text-slate-500">
-              {liveFraudSignals.hasLiveTelemetry ? "Live telemetry is available for the current-year anchor." : "No live request volume is available yet; charts use a clearly modeled 2026 anchor until telemetry arrives."}
+              {liveFraudSignals.hasLiveContainmentTelemetry ? "Live containment telemetry is available for the current-year anchor." : "No live containment telemetry is available yet; charts use a clearly modeled 2026 anchor until telemetry arrives."}
             </p>
           </div>
           <div className="px-3 py-2 rounded-xl border border-cyan-800 bg-cyan-950/50 text-cyan-300 text-xs font-mono font-bold">
@@ -142,7 +143,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               Prevented Loss
             </div>
             <p className="mt-2 text-2xl font-black text-cyan-300 font-mono">
-              {liveFraudSignals.hasLiveTelemetry ? `$${liveFraudSignals.preventedLoss.toLocaleString()}` : "No live data"}
+              {liveFraudSignals.hasLivePreventedLossTelemetry ? `$${liveFraudSignals.preventedLoss.toLocaleString()}` : "No live data"}
             </p>
           </div>
         </div>
