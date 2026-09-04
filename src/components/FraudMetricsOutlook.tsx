@@ -246,7 +246,11 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
           <p className="text-xs text-slate-400">Modeled leakage stays materially lower under SumerAvera while prevented-loss capacity scales with rising fraud pressure.</p>
           <p className="text-[11px] text-slate-500 mt-1">2027–2030 prevented-loss values are modeled estimates derived from the 2026 live baseline and projected fraud-pressure growth.</p>
         </div>
-        <div className="h-[22rem]">
+        <div
+          className="h-[22rem]"
+          role="img"
+          aria-label="Future fraud estimate chart showing SumerAvera leakage percentage on the left axis and fraud pressure index on the right axis from 2026 through 2030."
+        >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={futureEstimateData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
               <defs>
