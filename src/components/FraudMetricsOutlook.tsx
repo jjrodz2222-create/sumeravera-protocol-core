@@ -23,12 +23,14 @@ interface FraudMetricsOutlookProps {
 
 export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gateway }) => {
   const liveFraudSignals = useMemo(() => {
-    const totalRequests = gateway?.stats?.total_requests ?? 0;
-    const divertedThreats =
-      gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted ?? 0;
-    const preventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss ?? 0;
-    const hasLiveContainmentTelemetry = gateway?.stats?.total_requests !== undefined;
-    const hasLivePreventedLossTelemetry = gateway?.loss_prevention_metrics?.total_prevented_financial_loss !== undefined;
+    const rawTotalRequests = gateway?.stats?.total_requests;
+    const rawDivertedThreats = gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted;
+    const rawPreventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss;
+    const totalRequests = rawTotalRequests ?? 0;
+    const divertedThreats = rawDivertedThreats ?? 0;
+    const preventedLoss = rawPreventedLoss ?? 0;
+    const hasLiveContainmentTelemetry = typeof rawTotalRequests !== "undefined";
+    const hasLivePreventedLossTelemetry = typeof rawPreventedLoss !== "undefined";
     const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 0;
 
     return {
