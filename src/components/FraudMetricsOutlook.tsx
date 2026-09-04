@@ -32,7 +32,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       totalRequests,
       divertedThreats,
       preventedLoss,
-      isolationRate: Number(isolationRate.toFixed(1)),
+      isolationRate: Number(Math.min(100, Math.max(0, isolationRate)).toFixed(1)),
     };
   }, [gateway]);
 
@@ -193,13 +193,14 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               </defs>
               <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
               <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
-              <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
+              <YAxis yAxisId="percent" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} />
+              <YAxis yAxisId="scale" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
               <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
               <Legend wrapperStyle={{ fontSize: "12px" }} />
-              <Area type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
-              <Area type="monotone" dataKey="sumerAveraLeakage" name="SumerAvera leakage %" stroke="#22c55e" fill="url(#sumeraveraLeakageFill)" strokeWidth={2.5} />
-              <Line type="monotone" dataKey="fraudPressureIndex" name="Fraud pressure index" stroke="#38bdf8" strokeWidth={2.5} />
-              <Line type="monotone" dataKey="preventedLossM" name="Prevented loss ($M)" stroke="#eab308" strokeWidth={2.5} />
+              <Area yAxisId="percent" type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
+              <Area yAxisId="percent" type="monotone" dataKey="sumerAveraLeakage" name="SumerAvera leakage %" stroke="#22c55e" fill="url(#sumeraveraLeakageFill)" strokeWidth={2.5} />
+              <Line yAxisId="scale" type="monotone" dataKey="fraudPressureIndex" name="Fraud pressure index" stroke="#38bdf8" strokeWidth={2.5} />
+              <Line yAxisId="scale" type="monotone" dataKey="preventedLossM" name="Prevented loss ($M)" stroke="#eab308" strokeWidth={2.5} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
