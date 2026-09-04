@@ -57,15 +57,15 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
 
   const historicalFraudTrend = useMemo(
     () => [
-      { year: "2020", digitalFraudLossB: 18, currentTechContainment: 61, sumerAveraModeledContainment: 96 },
-      { year: "2021", digitalFraudLossB: 21, currentTechContainment: 62, sumerAveraModeledContainment: 96.5 },
-      { year: "2022", digitalFraudLossB: 25, currentTechContainment: 63, sumerAveraModeledContainment: 97.1 },
-      { year: "2023", digitalFraudLossB: 29, currentTechContainment: 64, sumerAveraModeledContainment: 97.5 },
-      { year: "2024", digitalFraudLossB: 34, currentTechContainment: 65, sumerAveraModeledContainment: 98.1 },
-      { year: "2025", digitalFraudLossB: 39, currentTechContainment: 66, sumerAveraModeledContainment: 98.6 },
-      { year: "2026", digitalFraudLossB: 44, currentTechContainment: 67, sumerAveraModeledContainment: modeledContainmentAnchor },
+      { year: "2020", digitalFraudLossB: 18, currentTechContainment: 61, sumerAveraModeledContainment: 96, sumerAveraLiveContainment: null },
+      { year: "2021", digitalFraudLossB: 21, currentTechContainment: 62, sumerAveraModeledContainment: 96.5, sumerAveraLiveContainment: null },
+      { year: "2022", digitalFraudLossB: 25, currentTechContainment: 63, sumerAveraModeledContainment: 97.1, sumerAveraLiveContainment: null },
+      { year: "2023", digitalFraudLossB: 29, currentTechContainment: 64, sumerAveraModeledContainment: 97.5, sumerAveraLiveContainment: null },
+      { year: "2024", digitalFraudLossB: 34, currentTechContainment: 65, sumerAveraModeledContainment: 98.1, sumerAveraLiveContainment: null },
+      { year: "2025", digitalFraudLossB: 39, currentTechContainment: 66, sumerAveraModeledContainment: 98.6, sumerAveraLiveContainment: null },
+      { year: "2026", digitalFraudLossB: 44, currentTechContainment: 67, sumerAveraModeledContainment: 98.9, sumerAveraLiveContainment: liveFraudSignals.hasLiveContainmentTelemetry ? modeledContainmentAnchor : null },
     ],
-    [modeledContainmentAnchor]
+    [liveFraudSignals.hasLiveContainmentTelemetry, modeledContainmentAnchor]
   );
 
   const capabilityGapData = useMemo(
@@ -198,7 +198,8 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
                 <Line yAxisId="loss" type="monotone" dataKey="digitalFraudLossB" name="Digital fraud loss ($B)" stroke="#f97316" strokeWidth={3} dot={{ r: 3 }} />
                 <Line yAxisId="rate" type="monotone" dataKey="currentTechContainment" name="Current tech containment %" stroke="#a855f7" strokeWidth={2.5} strokeDasharray="8 4" dot={{ r: 3, fill: "#a855f7" }} />
-                <Line yAxisId="rate" type="monotone" dataKey="sumerAveraModeledContainment" name="SumerAvera containment %" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 4, fill: "#22c55e" }} />
+                <Line yAxisId="rate" type="monotone" dataKey="sumerAveraModeledContainment" name="SumerAvera modeled containment %" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 4, fill: "#22c55e" }} />
+                <Line yAxisId="rate" type="monotone" dataKey="sumerAveraLiveContainment" name="SumerAvera live 2026 containment %" stroke="#facc15" strokeWidth={2.5} strokeDasharray="2 6" dot={{ r: 5, fill: "#facc15" }} connectNulls={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -247,7 +248,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
               <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
               <YAxis yAxisId="percent" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} label={{ value: "Leakage %", angle: -90, position: "insideLeft", fill: theme.axis, fontSize: 11 }} />
-              <YAxis yAxisId="scale" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} label={{ value: "Fraud pressure", angle: 90, position: "insideRight", fill: theme.axis, fontSize: 11 }} />
+              <YAxis yAxisId="scale" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[100, 150]} label={{ value: "Fraud pressure", angle: 90, position: "insideRight", fill: theme.axis, fontSize: 11 }} />
               <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
               <Legend wrapperStyle={{ fontSize: "12px" }} />
               <Area yAxisId="percent" type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
