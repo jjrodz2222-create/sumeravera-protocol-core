@@ -14,6 +14,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ComposedChart,
 } from "recharts";
 
 interface FraudMetricsOutlookProps {
@@ -22,19 +23,27 @@ interface FraudMetricsOutlookProps {
 
 export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gateway }) => {
   const liveFraudSignals = useMemo(() => {
-    const totalRequests = gateway?.stats?.total_requests ?? 2222;
+    const totalRequests = gateway?.stats?.total_requests ?? 0;
     const divertedThreats =
-      gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted ?? 42;
-    const preventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss ?? 95000;
-    const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 98.4;
+      gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted ?? 0;
+    const preventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss ?? 0;
+    const hasLiveTelemetry =
+      gateway?.stats?.total_requests !== undefined ||
+      gateway?.stats?.honeypot_diverted !== undefined ||
+      gateway?.loss_prevention_metrics?.quarantine_count !== undefined ||
+      gateway?.loss_prevention_metrics?.total_prevented_financial_loss !== undefined;
+    const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 0;
 
     return {
+      hasLiveTelemetry,
       totalRequests,
       divertedThreats,
       preventedLoss,
       isolationRate: Number(Math.min(100, Math.max(0, isolationRate)).toFixed(1)),
     };
   }, [gateway]);
+
+  const modeledContainmentAnchor = liveFraudSignals.totalRequests > 0 ? liveFraudSignals.isolationRate : 98.4;
 
   const historicalFraudTrend = useMemo(
     () => [
@@ -44,9 +53,9 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       { year: "2023", digitalFraudLossB: 29, currentTechContainment: 64, sumerAveraModeledContainment: 97.5 },
       { year: "2024", digitalFraudLossB: 34, currentTechContainment: 65, sumerAveraModeledContainment: 98.1 },
       { year: "2025", digitalFraudLossB: 39, currentTechContainment: 66, sumerAveraModeledContainment: 98.6 },
-      { year: "2026", digitalFraudLossB: 44, currentTechContainment: 67, sumerAveraModeledContainment: liveFraudSignals.isolationRate },
+      { year: "2026", digitalFraudLossB: 44, currentTechContainment: 67, sumerAveraModeledContainment: modeledContainmentAnchor },
     ],
-    [liveFraudSignals.isolationRate]
+    [modeledContainmentAnchor]
   );
 
   const capabilityGapData = useMemo(
@@ -62,13 +71,13 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
 
   const futureEstimateData = useMemo(
     () => [
-      { year: "2026", fraudPressureIndex: 100, currentTechLeakage: 33, sumerAveraLeakage: 100 - liveFraudSignals.isolationRate, preventedLossM: 0.1 },
+      { year: "2026", fraudPressureIndex: 100, currentTechLeakage: 33, sumerAveraLeakage: Number((100 - modeledContainmentAnchor).toFixed(1)), preventedLossM: Number((liveFraudSignals.preventedLoss / 1000000).toFixed(2)) },
       { year: "2027", fraudPressureIndex: 111, currentTechLeakage: 35, sumerAveraLeakage: 2.4, preventedLossM: 1.8 },
       { year: "2028", fraudPressureIndex: 123, currentTechLeakage: 37, sumerAveraLeakage: 2.2, preventedLossM: 3.2 },
       { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: 2.0, preventedLossM: 4.9 },
       { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: 1.8, preventedLossM: 6.7 },
     ],
-    [liveFraudSignals.isolationRate]
+    [liveFraudSignals.preventedLoss, modeledContainmentAnchor]
   );
 
   const theme = {
@@ -90,6 +99,9 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
             </div>
             <p className="text-sm text-slate-400 max-w-4xl">
               Historical and forward-looking fraud charts benchmark current anti-fraud technology against SumerAvera Gate 1 containment, using live protocol telemetry as the 2026 anchor.
+            </p>
+            <p className="text-xs text-slate-500">
+              {liveFraudSignals.totalRequests > 0 ? "Live telemetry is available for the current-year anchor." : "No live request volume is available yet; charts use a clearly modeled 2026 anchor until telemetry arrives."}
             </p>
           </div>
           <div className="px-3 py-2 rounded-xl border border-cyan-800 bg-cyan-950/50 text-cyan-300 text-xs font-mono font-bold">
@@ -124,7 +136,9 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               <TrendingUp className="w-4 h-4 text-cyan-400" />
               Prevented Loss
             </div>
-            <p className="mt-2 text-2xl font-black text-cyan-300 font-mono">${liveFraudSignals.preventedLoss.toLocaleString()}</p>
+            <p className="mt-2 text-2xl font-black text-cyan-300 font-mono">
+              {liveFraudSignals.hasLiveTelemetry ? `$${liveFraudSignals.preventedLoss.toLocaleString()}` : "No live data"}
+            </p>
           </div>
         </div>
       </div>
@@ -145,8 +159,8 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
                 <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
                 <Line yAxisId="loss" type="monotone" dataKey="digitalFraudLossB" name="Digital fraud loss ($B)" stroke="#f97316" strokeWidth={3} dot={{ r: 3 }} />
-                <Line yAxisId="rate" type="monotone" dataKey="currentTechContainment" name="Current tech containment %" stroke="#a855f7" strokeWidth={2.5} />
-                <Line yAxisId="rate" type="monotone" dataKey="sumerAveraModeledContainment" name="SumerAvera containment %" stroke="#22c55e" strokeWidth={2.5} />
+                <Line yAxisId="rate" type="monotone" dataKey="currentTechContainment" name="Current tech containment %" stroke="#a855f7" strokeWidth={2.5} strokeDasharray="8 4" dot={{ r: 3, fill: "#a855f7" }} />
+                <Line yAxisId="rate" type="monotone" dataKey="sumerAveraModeledContainment" name="SumerAvera containment %" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 4, fill: "#22c55e" }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -200,8 +214,19 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               <Area yAxisId="percent" type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
               <Area yAxisId="percent" type="monotone" dataKey="sumerAveraLeakage" name="SumerAvera leakage %" stroke="#22c55e" fill="url(#sumeraveraLeakageFill)" strokeWidth={2.5} />
               <Line yAxisId="scale" type="monotone" dataKey="fraudPressureIndex" name="Fraud pressure index" stroke="#38bdf8" strokeWidth={2.5} />
-              <Line yAxisId="scale" type="monotone" dataKey="preventedLossM" name="Prevented loss ($M)" stroke="#eab308" strokeWidth={2.5} />
             </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-6 h-52">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={futureEstimateData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
+              <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
+              <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
+              <Legend wrapperStyle={{ fontSize: "12px" }} />
+              <Bar dataKey="preventedLossM" name="Prevented loss ($M)" fill="#eab308" radius={[6, 6, 0, 0]} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
