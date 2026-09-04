@@ -22,6 +22,16 @@ interface FraudMetricsOutlookProps {
 }
 
 export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gateway }) => {
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      }),
+    []
+  );
+
   const liveFraudSignals = useMemo(() => {
     const rawTotalRequests = gateway?.stats?.total_requests;
     const rawDivertedThreats = gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted;
@@ -78,13 +88,21 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: 1.8 },
     ];
     const baselinePreventedLossM = liveFraudSignals.hasLivePreventedLossTelemetry ? liveFraudSignals.preventedLoss / 1000000 : null;
+    const baselineContainment = 100 - projections[0].sumerAveraLeakage;
 
     return projections.map((entry, index) => ({
       ...entry,
       preventedLossM:
         baselinePreventedLossM === null
           ? null
-          : Number((baselinePreventedLossM * (entry.fraudPressureIndex / 100) * (1 + index * 0.06)).toFixed(2)),
+          : Number(
+              (
+                baselinePreventedLossM *
+                (entry.fraudPressureIndex / 100) *
+                ((100 - entry.sumerAveraLeakage) / Math.max(baselineContainment, 1)) *
+                (1 + index * 0.03)
+              ).toFixed(2)
+            ),
     }));
   }, [liveFraudSignals.hasLivePreventedLossTelemetry, liveFraudSignals.preventedLoss, modeledContainmentAnchor]);
 
@@ -95,6 +113,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     border: "#334155",
     text: "#e2e8f0",
   };
+  const tooltipStyle = { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text };
 
   return (
     <div className="space-y-6">
@@ -145,7 +164,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               Prevented Loss
             </div>
             <p className="mt-2 text-2xl font-black text-cyan-300 font-mono">
-              {liveFraudSignals.hasLivePreventedLossTelemetry ? `$${liveFraudSignals.preventedLoss.toLocaleString()}` : "No live data"}
+              {liveFraudSignals.hasLivePreventedLossTelemetry ? currencyFormatter.format(liveFraudSignals.preventedLoss) : "No live data"}
             </p>
           </div>
         </div>
@@ -164,7 +183,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
                 <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
                 <YAxis yAxisId="loss" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
                 <YAxis yAxisId="rate" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[50, 100]} />
-                <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
                 <Line yAxisId="loss" type="monotone" dataKey="digitalFraudLossB" name="Digital fraud loss ($B)" stroke="#f97316" strokeWidth={3} dot={{ r: 3 }} />
                 <Line yAxisId="rate" type="monotone" dataKey="currentTechContainment" name="Current tech containment %" stroke="#a855f7" strokeWidth={2.5} strokeDasharray="8 4" dot={{ r: 3, fill: "#a855f7" }} />
@@ -185,7 +204,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
                 <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
                 <XAxis dataKey="vector" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 10 }} angle={-12} textAnchor="end" height={60} />
                 <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} />
-                <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
                 <Bar dataKey="currentTech" name="Current anti-fraud %" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="sumerAvera" name="SumerAvera Gate 1 %" fill="#22c55e" radius={[6, 6, 0, 0]} />
@@ -218,7 +237,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
               <YAxis yAxisId="percent" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} />
               <YAxis yAxisId="scale" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
-              <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
+              <Tooltip contentStyle={tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: "12px" }} />
               <Area yAxisId="percent" type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
               <Area yAxisId="percent" type="monotone" dataKey="sumerAveraLeakage" name="SumerAvera leakage %" stroke="#22c55e" fill="url(#sumeraveraLeakageFill)" strokeWidth={2.5} />
@@ -232,7 +251,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
               <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
               <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
-              <Tooltip contentStyle={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, color: theme.text }} />
+              <Tooltip contentStyle={tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: "12px" }} />
               <Bar dataKey="preventedLossM" name="Prevented loss ($M)" fill="#eab308" radius={[6, 6, 0, 0]} />
             </ComposedChart>
