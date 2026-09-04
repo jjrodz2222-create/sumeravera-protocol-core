@@ -43,7 +43,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     };
   }, [gateway]);
 
-  const modeledContainmentAnchor = liveFraudSignals.totalRequests > 0 ? liveFraudSignals.isolationRate : 98.4;
+  const modeledContainmentAnchor = liveFraudSignals.hasLiveTelemetry ? liveFraudSignals.isolationRate : 98.4;
 
   const historicalFraudTrend = useMemo(
     () => [
@@ -106,7 +106,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               Historical and forward-looking fraud charts benchmark current anti-fraud technology against SumerAvera Gate 1 containment, using live protocol telemetry as the 2026 anchor.
             </p>
             <p className="text-xs text-slate-500">
-              {liveFraudSignals.totalRequests > 0 ? "Live telemetry is available for the current-year anchor." : "No live request volume is available yet; charts use a clearly modeled 2026 anchor until telemetry arrives."}
+              {liveFraudSignals.hasLiveTelemetry ? "Live telemetry is available for the current-year anchor." : "No live request volume is available yet; charts use a clearly modeled 2026 anchor until telemetry arrives."}
             </p>
           </div>
           <div className="px-3 py-2 rounded-xl border border-cyan-800 bg-cyan-950/50 text-cyan-300 text-xs font-mono font-bold">
