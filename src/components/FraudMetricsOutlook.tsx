@@ -27,10 +27,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     const divertedThreats =
       gateway?.loss_prevention_metrics?.quarantine_count ?? gateway?.stats?.honeypot_diverted ?? 0;
     const preventedLoss = gateway?.loss_prevention_metrics?.total_prevented_financial_loss ?? 0;
-    const hasLiveContainmentTelemetry =
-      gateway?.stats?.total_requests !== undefined ||
-      gateway?.stats?.honeypot_diverted !== undefined ||
-      gateway?.loss_prevention_metrics?.quarantine_count !== undefined;
+    const hasLiveContainmentTelemetry = gateway?.stats?.total_requests !== undefined;
     const hasLivePreventedLossTelemetry = gateway?.loss_prevention_metrics?.total_prevented_financial_loss !== undefined;
     const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 0;
 
@@ -78,13 +75,16 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: 2.0 },
       { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: 1.8 },
     ];
-    const baselinePreventedLossM = liveFraudSignals.preventedLoss / 1000000;
+    const baselinePreventedLossM = liveFraudSignals.hasLivePreventedLossTelemetry ? liveFraudSignals.preventedLoss / 1000000 : null;
 
     return projections.map((entry, index) => ({
       ...entry,
-      preventedLossM: Number((baselinePreventedLossM * (entry.fraudPressureIndex / 100) * (1 + index * 0.06)).toFixed(2)),
+      preventedLossM:
+        baselinePreventedLossM === null
+          ? null
+          : Number((baselinePreventedLossM * (entry.fraudPressureIndex / 100) * (1 + index * 0.06)).toFixed(2)),
     }));
-  }, [liveFraudSignals.preventedLoss, modeledContainmentAnchor]);
+  }, [liveFraudSignals.hasLivePreventedLossTelemetry, liveFraudSignals.preventedLoss, modeledContainmentAnchor]);
 
   const theme = {
     grid: "#1e293b",
