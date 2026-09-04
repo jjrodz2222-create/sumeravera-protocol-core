@@ -39,7 +39,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     const totalRequests = rawTotalRequests ?? 0;
     const divertedThreats = rawDivertedThreats ?? 0;
     const preventedLoss = rawPreventedLoss ?? 0;
-    const hasLiveContainmentTelemetry = typeof rawTotalRequests !== "undefined";
+    const hasLiveContainmentTelemetry = typeof rawTotalRequests !== "undefined" && typeof rawDivertedThreats !== "undefined";
     const hasLivePreventedLossTelemetry = typeof rawPreventedLoss !== "undefined";
     const isolationRate = totalRequests > 0 ? (divertedThreats / totalRequests) * 100 : 0;
 
@@ -235,8 +235,8 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               </defs>
               <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
               <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
-              <YAxis yAxisId="percent" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} />
-              <YAxis yAxisId="scale" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
+              <YAxis yAxisId="percent" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} domain={[0, 100]} label={{ value: "Leakage %", angle: -90, position: "insideLeft", fill: theme.axis, fontSize: 11 }} />
+              <YAxis yAxisId="scale" orientation="right" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} label={{ value: "Fraud pressure", angle: 90, position: "insideRight", fill: theme.axis, fontSize: 11 }} />
               <Tooltip contentStyle={tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: "12px" }} />
               <Area yAxisId="percent" type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
