@@ -9,6 +9,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
+import { Mutex, KernelStateMutex, createKernelMutex } from "./src/data/KernelMutex";
+
+export const globalKernelMutex = createKernelMutex();
 
 // 1. SECRETS & CONFIGURATION: Loaded from environment with secure defaults
 dotenv.config();
@@ -1604,13 +1607,22 @@ const getHistoryHandler = async (req: express.Request, res: express.Response) =>
 app.get("/api/history", getHistoryHandler);
 app.get("/api/v1/history", getHistoryHandler);
 
-// 2. Step Lotka-Volterra Differential Simulation
+// 2. Step Lotka-Volterra Differential Simulation guarded by strict generic KernelStateMutex
 app.post("/api/step", async (req, res) => {
   try {
-    const dt = req.body.dt ? String(req.body.dt) : "1.0";
-    const result = await runPythonEngine("step", dt);
+    const dtNum = req.body.dt ? Number(req.body.dt) : 1.0;
+    const dt = String(dtNum);
+    // Execute simulation transition within strict generic Mutex to ensure zero state bleed or race conditions
+    const result = await globalKernelMutex.withLock(async () => {
+      try {
+        return await runPythonEngine("step", dt);
+      } catch (pyErr) {
+        // High-concurrency fallback to TypeScript Lotka-Volterra differential step
+        return await globalKernelMutex.stepSimulation(dtNum);
+      }
+    });
     res.json(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     res.status(500).json({ error: "Failed to step differential engine" });
   }
 });

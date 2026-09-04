@@ -354,3 +354,27 @@ export interface WidgetEvaluationResult {
   sha256VerificationHash: string;
 }
 
+export interface MutexOptions<T> {
+  cloner?: (value: T) => T;
+  validator?: (state: T) => boolean | Promise<boolean>;
+  name?: string;
+}
+
+export interface MutexGuard<T> {
+  readonly value: T;
+  update(newValue: T): void;
+  release(): void;
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
+export interface ConcurrencyMetrics {
+  name: string;
+  totalAcquisitions: number;
+  totalTransitions: number;
+  totalErrors: number;
+  currentQueueLength: number;
+  isLocked: boolean;
+  peakQueueLength: number;
+  averageHoldTimeMs: number;
+}
+

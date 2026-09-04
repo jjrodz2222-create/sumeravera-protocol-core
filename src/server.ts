@@ -125,26 +125,32 @@ export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
 export const CONFIG = validateProtocolEnvironment();
 
 // -----------------------------------------------------------------------------
-// 2. STRICT TYPE-NARROWED IN-FLIGHT ASYNC MUTEX
+// 2. STRICT GENERIC MUTEX & IN-FLIGHT ASYNC MUTEX
 // -----------------------------------------------------------------------------
+export {
+  Mutex,
+  KernelStateMutex,
+  createKernelMutex,
+  DEFAULT_KERNEL_INITIAL_STATE,
+  deepClone,
+  deepFreeze,
+  validateKernelInvariants,
+} from "./data/KernelMutex";
+export type { MutexOptions, MutexGuard, ConcurrencyMetrics } from "./data/KernelMutex";
+
+import { Mutex, createKernelMutex } from "./data/KernelMutex";
+
+export const globalKernelMutex = createKernelMutex();
+
 export class TypedAsyncMutex {
-  private queue: Promise<unknown> = Promise.resolve();
+  private readonly _mutex = new Mutex<void>(undefined, { name: "TypedAsyncMutex" });
 
   /**
    * Executes a critical section task with strict generic return type T,
    * guaranteeing zero type leakage and strict FIFO order under high-burst concurrency.
    */
   public lock<T>(task: () => Promise<T> | T): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      this.queue = this.queue.then(async () => {
-        try {
-          const result = await task();
-          resolve(result);
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
+    return this._mutex.withLock(() => task());
   }
 }
 
