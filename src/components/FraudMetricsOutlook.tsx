@@ -243,7 +243,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
               <Legend wrapperStyle={{ fontSize: "12px" }} />
               <Area yAxisId="percent" type="monotone" dataKey="currentTechLeakage" name="Current tech leakage %" stroke="#f97316" fill="url(#currentLeakageFill)" strokeWidth={2.5} />
               <Area yAxisId="percent" type="monotone" dataKey="sumerAveraLeakage" name="SumerAvera leakage %" stroke="#22c55e" fill="url(#sumeraveraLeakageFill)" strokeWidth={2.5} />
-              <Line yAxisId="scale" type="monotone" dataKey="fraudPressureIndex" name="Fraud pressure index" stroke="#38bdf8" strokeWidth={2.5} />
+              <Line yAxisId="scale" type="monotone" dataKey="fraudPressureIndex" name="Fraud pressure index" stroke="#38bdf8" strokeWidth={2.5} strokeDasharray="7 4" dot={{ r: 3, fill: "#38bdf8" }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
