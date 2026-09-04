@@ -105,10 +105,10 @@ class SumerAveraSettlementEngine:
                 "state_bleed": 0.00
             }
 
-        # Tier 2: Conditional Escrow Review
+        # Tier 2: Conditional Escrow Hold
         if anomaly_index >= 500:
             return {
-                "status": "ESCROW_REVIEW_REQUIRED",
+                "status": "ESCROW_HOLD_DETERMINISTIC",
                 "disposition": "GATE_1_HEURISTIC_ESCROW",
                 "tier": 2,
                 "claim_id": claim_id,

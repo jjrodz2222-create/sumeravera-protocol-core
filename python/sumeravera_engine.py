@@ -540,14 +540,9 @@ class TruthVerificationEngine:
         is_anomalous = payload.get("risk_score", 0.0) > 0.85 or payload.get("flagged_fraud", False)
 
         if is_anomalous:
-            # 1. Isolate payload in quarantine zone (0% state cross-bleed)
-            isolated_entry = {
-                "step": self.step_counter,
-                "payload_id": payload.get("payload_id"),
-                "prevented_loss_value": payload.get("claimed_value", 0.0),
-                "timestamp": time.time()
-            }
-            self.quarantine_zone.append(isolated_entry)
+            # 1. Fail-closed immediately: Discard payload with zero disk/memory queue allocation
+            self.quarantined_count = getattr(self, "quarantined_count", 0) + 1
+            self.quarantine_zone = []
            
             # 2. Extract real-time gain-share fee at instant of authentication
             prevented_val = payload.get("claimed_value", 0.0)
@@ -584,7 +579,7 @@ class TruthVerificationEngine:
         return {
             "current_step": self.step_counter,
             "secure_blocks": len(self.chain),
-            "quarantined_payloads": len(self.quarantine_zone),
+            "quarantined_payloads": getattr(self, "quarantined_count", 0),
             "isolation_integrity": "100.0%",
             "overall_error_density": "0.000%",
             "accumulated_gain_share_capital": round(self.total_fees_extracted, 2),
@@ -908,27 +903,13 @@ class AdaptiveGatewayHoneypot:
             }
 
             fake_block_hash = hashlib.sha256(f"QUARANTINE_ISOLATED_{timestamp}_{client_ip}".encode()).hexdigest()
-            honeypot_entry = {
-                "id": f"QRT-{int(timestamp * 1000)}",
-                "timestamp": timestamp,
-                "client_ip": client_ip,
-                "user_agent": user_agent,
-                "threat_type": "QUARANTINE_ANOMALY_EXCEEDED",
-                "reason": schema_eval["reason"],
-                "anomaly_index": anomaly_index,
-                "action_taken": "ISOLATED_IN_QUARANTINE_ARRAY",
-                "payload_captured": payload,
-                "prevented_financial_loss": prevented_amount,
-                "synthetic_response_sent": {
-                    "status": "ACCEPTED_DECOY",
-                    "synthetic_ledger_hash": fake_block_hash,
-                    "simulated_E": 9999.0
-                }
+            synthetic_response_sent = {
+                "status": "ACCEPTED_DECOY",
+                "synthetic_ledger_hash": fake_block_hash,
+                "simulated_E": 9999.0
             }
-            
-            self.honeypot_logs.insert(0, honeypot_entry)
-            if len(self.honeypot_logs) > 50:
-                self.honeypot_logs.pop()
+            # Zero queue allocation: payload is discarded immediately with no buffer retention
+            self.honeypot_logs = []
 
             return {
                 "status": "QUARANTINE",
@@ -938,7 +919,7 @@ class AdaptiveGatewayHoneypot:
                 "anomaly_index": anomaly_index,
                 "threat_type": "FRAUD_ANOMALY_QUARANTINE",
                 "message": schema_eval["reason"],
-                "decoy_response": honeypot_entry["synthetic_response_sent"],
+                "decoy_response": synthetic_response_sent,
                 "schema_compliance": schema_eval,
                 "loss_prevention": self.loss_prevention_metrics,
                 "audit": details
@@ -2135,13 +2116,12 @@ class UniversalSignalBeacon:
                 "message": "100% data verification achieved. Zero-friction flow active."
             }
         else:
-            # Lymphatic quarantine for noise/fraud
-            quarantined = self._quarantine_anomaly(incoming_telemetry)
-            self.anomaly_ledger.append(quarantined)
+            # Lymphatic fail-closed quarantine: discard payload immediately with zero buffer queue allocation
+            self.anomaly_count = getattr(self, "anomaly_count", 0) + 1
             return {
                 "status": "ANOMALY_QUARANTINED",
                 "step": self.current_step,
-                "action": "Filtered via non-destructive sandbox. System baseline secure."
+                "action": "Filtered via fail-closed discard. Zero memory queue allocation."
             }
 
     def _verify_integrity(self, data: dict) -> bool:
@@ -2157,7 +2137,7 @@ class UniversalSignalBeacon:
     def _quarantine_anomaly(self, data: dict) -> dict:
         return {
             "timestamp": time.time(),
-            "anomaly_payload": data,
+            "anomaly_payload": "[DISCARDED_FAIL_CLOSED_ZERO_ALLOCATION]",
             "resolution": "Neutralized without systemic feedback or destruction."
         }
 

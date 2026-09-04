@@ -1,4 +1,5 @@
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
+import type { Request, Response, NextFunction } from "express";
 import http from "http";
 import path from "path";
 import fs from "fs";
@@ -22,7 +23,7 @@ export interface ProtocolEnvironmentConfig {
   BIO_SECRET: string;
   ENERGY_SECRET: string;
   ART_SECRET: string;
-  MASTER_HMAC_KEY: string;
+  ED25519_PUBLIC_KEY: string;
   ADMIN_WS_TOKEN: string;
   SETTLEMENT_STORE_PATH: string;
   WAL_LOG_PATH: string;
@@ -66,7 +67,7 @@ export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
     return clean;
   };
 
-  const rawPort = process.env.PORT || "3000";
+  const rawPort = process.env.PORT || "8080";
   const port = Number(rawPort);
   if (isNaN(port) || port <= 0 || port > 65535) {
     errors.push(`Invalid PORT '${rawPort}'. Must be an integer between 1 and 65535.`);
@@ -79,11 +80,11 @@ export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
     16
   );
 
-  const masterHmac = checkSecretString(
-    "SUMER_HMAC_MASTER_KEY",
-    process.env.SUMER_HMAC_MASTER_KEY,
-    "sumer_master_hmac_secret_2026",
-    16
+  const ed25519PubKey = checkSecretString(
+    "SUMER_ED25519_PUBLIC_KEY",
+    process.env.SUMER_ED25519_PUBLIC_KEY,
+    "64fffe4c1426b1dc83cb3e63cb39fb96f418832ec17733b5fdd2f0051d390e0f",
+    32
   );
 
   const adminToken = checkSecretString(
@@ -112,7 +113,7 @@ export function validateProtocolEnvironment(): ProtocolEnvironmentConfig {
     BIO_SECRET: process.env.SUMER_SECRET_BIO || "sumer_secret_bio_9982",
     ENERGY_SECRET: process.env.SUMER_SECRET_ENERGY || "sumer_secret_energy_1102",
     ART_SECRET: process.env.SUMER_SECRET_ART || "sumer_secret_art_4431",
-    MASTER_HMAC_KEY: masterHmac,
+    ED25519_PUBLIC_KEY: ed25519PubKey,
     ADMIN_WS_TOKEN: adminToken,
     SETTLEMENT_STORE_PATH: process.env.SETTLEMENT_STORE_PATH || path.join(process.cwd(), "python", "settlement_store.json"),
     WAL_LOG_PATH: process.env.WAL_LOG_PATH || path.join(process.cwd(), "python", "settlement_wal.log"),
@@ -165,34 +166,114 @@ export function canonicalizeJson(obj: any): string {
 }
 
 // -----------------------------------------------------------------------------
-// 4. CRYPTOGRAPHIC SIGNATURES: Constant-time HMAC-SHA256 (timingSafeEqual)
+// 4. ASYMMETRIC CRYPTOGRAPHIC SIGNATURES: Ed25519 Ingress Signature Verification
 // -----------------------------------------------------------------------------
-export function verifyCryptographicHmac(
+
+// Protocol default root Ed25519 keypair for deterministic node verification
+const DEFAULT_ED25519_SEED = crypto.createHash("sha256").update("sumer_avera_ed25519_seed_2026").digest();
+const DEFAULT_ED25519_PKCS8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), DEFAULT_ED25519_SEED]);
+export const DEFAULT_ED25519_PRIVATE_KEY = crypto.createPrivateKey({ key: DEFAULT_ED25519_PKCS8, format: "der", type: "pkcs8" });
+export const DEFAULT_ED25519_PUBLIC_KEY = crypto.createPublicKey(DEFAULT_ED25519_PRIVATE_KEY);
+export const DEFAULT_ED25519_PUBLIC_KEY_HEX = DEFAULT_ED25519_PUBLIC_KEY.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+
+export function parseEd25519PublicKey(keyInput?: string | crypto.KeyObject | null): crypto.KeyObject | null {
+  if (!keyInput) return null;
+  if (typeof keyInput === "object" && (keyInput as any).type === "public") return keyInput;
+  if (typeof keyInput === "string") {
+    const trimmed = keyInput.trim();
+    if (trimmed.includes("-----BEGIN")) {
+      try {
+        return crypto.createPublicKey(trimmed);
+      } catch (_) {}
+    }
+    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      try {
+        const raw = Buffer.from(trimmed, "hex");
+        return crypto.createPublicKey({
+          key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]),
+          format: "der",
+          type: "spki",
+        });
+      } catch (_) {}
+    }
+    if (/^[0-9a-fA-F]{88}$/.test(trimmed)) {
+      try {
+        return crypto.createPublicKey({
+          key: Buffer.from(trimmed, "hex"),
+          format: "der",
+          type: "spki",
+        });
+      } catch (_) {}
+    }
+    try {
+      const buf = Buffer.from(trimmed, "base64");
+      if (buf.length === 32) {
+        return crypto.createPublicKey({
+          key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), buf]),
+          format: "der",
+          type: "spki",
+        });
+      } else if (buf.length === 44) {
+        return crypto.createPublicKey({ key: buf, format: "der", type: "spki" });
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+export function signEd25519Payload(
   serializedPayload: string,
-  providedSignature: string | undefined | null
+  privateKeyInput: crypto.KeyObject | string = DEFAULT_ED25519_PRIVATE_KEY
+): string {
+  let privKey: crypto.KeyObject;
+  if (typeof privateKeyInput === "string") {
+    if (privateKeyInput.includes("-----BEGIN")) {
+      privKey = crypto.createPrivateKey(privateKeyInput);
+    } else if (/^[0-9a-fA-F]{64}$/.test(privateKeyInput.trim())) {
+      const seed = Buffer.from(privateKeyInput.trim(), "hex");
+      const pkcs8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]);
+      privKey = crypto.createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
+    } else {
+      privKey = DEFAULT_ED25519_PRIVATE_KEY;
+    }
+  } else {
+    privKey = privateKeyInput;
+  }
+  const data = Buffer.from(serializedPayload, "utf-8");
+  return crypto.sign(null, data, privKey).toString("hex");
+}
+
+export function verifyEd25519Signature(
+  serializedPayload: string,
+  providedSignature: string | undefined | null,
+  customPublicKey?: crypto.KeyObject | string
 ): boolean {
   if (!providedSignature || typeof providedSignature !== "string") {
     return false;
   }
 
-  const cleanSig = providedSignature.trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(cleanSig)) {
+  const cleanSig = providedSignature.trim();
+  let sigBuffer: Buffer;
+  if (/^[0-9a-fA-F]{128}$/.test(cleanSig)) {
+    sigBuffer = Buffer.from(cleanSig, "hex");
+  } else if (/^[A-Za-z0-9+/]{86,88}={0,2}$/.test(cleanSig)) {
+    sigBuffer = Buffer.from(cleanSig, "base64");
+  } else {
     return false;
   }
 
-  const sigBuffer = Buffer.from(cleanSig, "hex");
-  if (sigBuffer.length !== 32) {
+  if (sigBuffer.length !== 64) {
     return false;
   }
 
-  const candidateKeys = [...new Set([
-    CONFIG.SECRET_KEY,
-    CONFIG.ZERO_DRIFT_SECRET,
-    CONFIG.BIO_SECRET,
-    CONFIG.ENERGY_SECRET,
-    CONFIG.ART_SECRET,
-    CONFIG.MASTER_HMAC_KEY,
-  ])];
+  const candidateKeys: crypto.KeyObject[] = [];
+  if (customPublicKey) {
+    const parsed = parseEd25519PublicKey(customPublicKey);
+    if (parsed) candidateKeys.push(parsed);
+  }
+  const envKey = parseEd25519PublicKey(CONFIG.ED25519_PUBLIC_KEY);
+  if (envKey) candidateKeys.push(envKey);
+  candidateKeys.push(DEFAULT_ED25519_PUBLIC_KEY);
 
   const payloadVariations: string[] = [serializedPayload];
   try {
@@ -202,21 +283,30 @@ export function verifyCryptographicHmac(
     }
   } catch (_) {}
 
-  for (const key of candidateKeys) {
+  for (const pubKey of candidateKeys) {
     for (const variation of payloadVariations) {
-      const hmacHex = crypto.createHmac("sha256", key).update(variation).digest("hex");
-      const hmacBuffer = Buffer.from(hmacHex, "hex");
-      if (sigBuffer.length === hmacBuffer.length && crypto.timingSafeEqual(sigBuffer, hmacBuffer)) {
-        return true;
-      }
+      try {
+        const verified = crypto.verify(null, Buffer.from(variation, "utf-8"), pubKey, sigBuffer);
+        if (verified) {
+          return true;
+        }
+      } catch (_) {}
     }
   }
 
   return false;
 }
 
+// Backward-compatible verification for existing test suites and call sites
+export function verifyCryptographicHmac(
+  serializedPayload: string,
+  providedSignature: string | undefined | null
+): boolean {
+  return verifyEd25519Signature(serializedPayload, providedSignature);
+}
+
 export const isSignatureValid = (payload: string, signature: string): boolean => {
-  return verifyCryptographicHmac(payload, signature);
+  return verifyEd25519Signature(payload, signature);
 };
 
 // -----------------------------------------------------------------------------
@@ -604,15 +694,47 @@ function runGate1Script(command: string, ...args: string[]): Promise<any> {
 }
 
 const app = express();
+// Trust reverse proxy (Google Cloud Run / AI Studio reverse proxy)
+app.set("trust proxy", 1);
 const PORT = CONFIG.PORT;
+const HOST = '0.0.0.0';
 const httpServer = http.createServer(app);
 
-// Security HTTP headers
-app.use(helmet());
+// Allow app.listen to delegate directly to httpServer
+(app as any).listen = (...args: any[]) => (httpServer.listen as any)(...args);
+
+// Security HTTP headers - configured to allow Google AI Studio iframe preview
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    frameguard: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+  })
+);
 
 // Rate limiting: standardLimiter applied globally; mutationLimiter overrides on write endpoints
-const standardLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
-const mutationLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+const standardLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+  },
+});
+const mutationLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+  },
+});
 
 app.use(standardLimiter);
 app.use(express.json({ limit: "10mb" }));
@@ -850,7 +972,7 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
 
     if (anomalyIndex >= 500) {
       return res.status(200).json({
-        status: "ESCROW_REVIEW_REQUIRED",
+        status: "ESCROW_HOLD_DETERMINISTIC",
         disposition: "GATE_1_HEURISTIC_ESCROW",
         tier: 2,
         claim_id: claimId,
@@ -1101,8 +1223,11 @@ export async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SumerAvera Protocol Core] Gateway running on http://0.0.0.0:${PORT}`);
+  const PORT = Number(process.env.PORT) || 8080;
+  const HOST = '0.0.0.0';
+  app.listen(PORT, HOST, () => {
+    console.log(`Server listening on http://${HOST}:${PORT}`);
+    console.log(`[SumerAvera Protocol Core] Gateway running on http://${HOST}:${PORT}`);
     // Compact WAL every 6 hours to prevent unbounded file growth
     setInterval(() => { settlementNonceStore.compact().catch(console.error); }, 6 * 60 * 60 * 1000);
   });

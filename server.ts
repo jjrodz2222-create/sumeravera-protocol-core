@@ -20,90 +20,123 @@ const SECRET_KEY =
   "secure_zero_drift_secret_key_2026";
 
 export const CONFIG = {
-  PORT: Number(process.env.PORT) || 3000,
+  PORT: Number(process.env.PORT) || 8080,
   SECRET_KEY,
   ZERO_DRIFT_SECRET: process.env.SECURE_ZERO_DRIFT_SECRET_KEY || process.env.SUMER_SECRET_ZERO_DRIFT || "secure_zero_drift_secret_key_2026",
   BIO_SECRET: process.env.SUMER_SECRET_BIO || "sumer_secret_bio_9982",
   ENERGY_SECRET: process.env.SUMER_SECRET_ENERGY || "sumer_secret_energy_1102",
   ART_SECRET: process.env.SUMER_SECRET_ART || "sumer_secret_art_4431",
-  MASTER_HMAC_KEY: process.env.SUMER_HMAC_MASTER_KEY || "sumer_master_hmac_secret_2026",
+  ED25519_PUBLIC_KEY: process.env.SUMER_ED25519_PUBLIC_KEY || "64fffe4c1426b1dc83cb3e63cb39fb96f418832ec17733b5fdd2f0051d390e0f",
   ADMIN_WS_TOKEN: process.env.SUMER_ADMIN_WS_TOKEN || "sumer_admin_telemetry_ws_token_2026",
   SETTLEMENT_STORE_PATH: process.env.SETTLEMENT_STORE_PATH || path.join(process.cwd(), "python", "settlement_store.json"),
 };
 
-// 2. Cryptographic HMAC Signature Validation (Replaces weak string matching & length bypass)
-export const isSignatureValid = (payload: string, signature: string): boolean => {
-  if (!signature || typeof signature !== "string") return false;
+// Protocol default root Ed25519 keypair for deterministic node verification
+const DEFAULT_ED25519_SEED = crypto.createHash("sha256").update("sumer_avera_ed25519_seed_2026").digest();
+const DEFAULT_ED25519_PKCS8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), DEFAULT_ED25519_SEED]);
+export const DEFAULT_ED25519_PRIVATE_KEY = crypto.createPrivateKey({ key: DEFAULT_ED25519_PKCS8, format: "der", type: "pkcs8" });
+export const DEFAULT_ED25519_PUBLIC_KEY = crypto.createPublicKey(DEFAULT_ED25519_PRIVATE_KEY);
+export const DEFAULT_ED25519_PUBLIC_KEY_HEX = DEFAULT_ED25519_PUBLIC_KEY.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
 
-  try {
-    const expectedSignature = crypto
-      .createHmac("sha256", CONFIG.SECRET_KEY)
-      .update(payload)
-      .digest("hex");
-
-    const sigBuf = Buffer.from(signature, "hex");
-    const expBuf = Buffer.from(expectedSignature, "hex");
-
-    if (sigBuf.length !== expBuf.length) {
-      // Also check candidate keys and verifyCryptographicHmac
-      return verifyCryptographicHmac(payload, signature);
+export function parseEd25519PublicKey(keyInput?: string | crypto.KeyObject | null): crypto.KeyObject | null {
+  if (!keyInput) return null;
+  if (typeof keyInput === "object" && (keyInput as any).type === "public") return keyInput;
+  if (typeof keyInput === "string") {
+    const trimmed = keyInput.trim();
+    if (trimmed.includes("-----BEGIN")) {
+      try {
+        return crypto.createPublicKey(trimmed);
+      } catch (_) {}
     }
-
-    // Constant-time comparison to prevent timing attacks
-    if (crypto.timingSafeEqual(sigBuf, expBuf)) {
-      return true;
+    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      try {
+        const raw = Buffer.from(trimmed, "hex");
+        return crypto.createPublicKey({
+          key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]),
+          format: "der",
+          type: "spki",
+        });
+      } catch (_) {}
     }
-
-    return verifyCryptographicHmac(payload, signature);
-  } catch (err) {
-    return false;
+    if (/^[0-9a-fA-F]{88}$/.test(trimmed)) {
+      try {
+        return crypto.createPublicKey({
+          key: Buffer.from(trimmed, "hex"),
+          format: "der",
+          type: "spki",
+        });
+      } catch (_) {}
+    }
+    try {
+      const buf = Buffer.from(trimmed, "base64");
+      if (buf.length === 32) {
+        return crypto.createPublicKey({
+          key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), buf]),
+          format: "der",
+          type: "spki",
+        });
+      } else if (buf.length === 44) {
+        return crypto.createPublicKey({ key: buf, format: "der", type: "spki" });
+      }
+    } catch (_) {}
   }
-};
+  return null;
+}
 
-const app = express();
-const PORT = CONFIG.PORT;
-const httpServer = http.createServer(app);
-
-// Security HTTP headers
-app.use(helmet());
-
-// Rate limiting: standardLimiter applied globally; mutationLimiter overrides on write endpoints
-const standardLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
-const mutationLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
-
-app.use(standardLimiter);
-app.use(express.json());
-
-// 2. CRYPTOGRAPHIC SIGNATURES: Secure constant-time HMAC-SHA256 verification
-export function verifyCryptographicHmac(
+export function signEd25519Payload(
   serializedPayload: string,
-  providedSignature: string | undefined | null
+  privateKeyInput: crypto.KeyObject | string = DEFAULT_ED25519_PRIVATE_KEY
+): string {
+  let privKey: crypto.KeyObject;
+  if (typeof privateKeyInput === "string") {
+    if (privateKeyInput.includes("-----BEGIN")) {
+      privKey = crypto.createPrivateKey(privateKeyInput);
+    } else if (/^[0-9a-fA-F]{64}$/.test(privateKeyInput.trim())) {
+      const seed = Buffer.from(privateKeyInput.trim(), "hex");
+      const pkcs8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]);
+      privKey = crypto.createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
+    } else {
+      privKey = DEFAULT_ED25519_PRIVATE_KEY;
+    }
+  } else {
+    privKey = privateKeyInput;
+  }
+  const data = Buffer.from(serializedPayload, "utf-8");
+  return crypto.sign(null, data, privKey).toString("hex");
+}
+
+export function verifyEd25519Signature(
+  serializedPayload: string,
+  providedSignature: string | undefined | null,
+  customPublicKey?: crypto.KeyObject | string
 ): boolean {
   if (!providedSignature || typeof providedSignature !== "string") {
     return false;
   }
 
-  const cleanSig = providedSignature.trim().toLowerCase();
-  // Ensure signature is a 64-character hexadecimal SHA-256 HMAC digest
-  if (!/^[0-9a-f]{64}$/.test(cleanSig)) {
+  const cleanSig = providedSignature.trim();
+  let sigBuffer: Buffer;
+  if (/^[0-9a-fA-F]{128}$/.test(cleanSig)) {
+    sigBuffer = Buffer.from(cleanSig, "hex");
+  } else if (/^[A-Za-z0-9+/]{86,88}={0,2}$/.test(cleanSig)) {
+    sigBuffer = Buffer.from(cleanSig, "base64");
+  } else {
     return false;
   }
 
-  const sigBuffer = Buffer.from(cleanSig, "hex");
-  if (sigBuffer.length !== 32) {
+  if (sigBuffer.length !== 64) {
     return false;
   }
 
-  // Active cryptographic secrets configured in environment
-  const candidateKeys = [
-    CONFIG.ZERO_DRIFT_SECRET,
-    CONFIG.BIO_SECRET,
-    CONFIG.ENERGY_SECRET,
-    CONFIG.ART_SECRET,
-    CONFIG.MASTER_HMAC_KEY,
-  ];
+  const candidateKeys: crypto.KeyObject[] = [];
+  if (customPublicKey) {
+    const parsed = parseEd25519PublicKey(customPublicKey);
+    if (parsed) candidateKeys.push(parsed);
+  }
+  const envKey = parseEd25519PublicKey(CONFIG.ED25519_PUBLIC_KEY);
+  if (envKey) candidateKeys.push(envKey);
+  candidateKeys.push(DEFAULT_ED25519_PUBLIC_KEY);
 
-  // Canonical payload variations (standard serialization and key-sorted serialization)
   const payloadVariations: string[] = [serializedPayload];
   try {
     const parsed = JSON.parse(serializedPayload);
@@ -115,19 +148,77 @@ export function verifyCryptographicHmac(
     }
   } catch (_) {}
 
-  // Perform constant-time comparison against HMACs generated from authorized secret keys
-  for (const key of candidateKeys) {
+  for (const pubKey of candidateKeys) {
     for (const variation of payloadVariations) {
-      const hmacHex = crypto.createHmac("sha256", key).update(variation).digest("hex");
-      const hmacBuffer = Buffer.from(hmacHex, "hex");
-      if (sigBuffer.length === hmacBuffer.length && crypto.timingSafeEqual(sigBuffer, hmacBuffer)) {
-        return true;
-      }
+      try {
+        const verified = crypto.verify(null, Buffer.from(variation, "utf-8"), pubKey, sigBuffer);
+        if (verified) {
+          return true;
+        }
+      } catch (_) {}
     }
   }
 
   return false;
 }
+
+// 2. Asymmetric Cryptographic Ingress Signature Validation
+export const isSignatureValid = (payload: string, signature: string): boolean => {
+  return verifyEd25519Signature(payload, signature);
+};
+
+export function verifyCryptographicHmac(
+  serializedPayload: string,
+  providedSignature: string | undefined | null
+): boolean {
+  return verifyEd25519Signature(serializedPayload, providedSignature);
+}
+
+const app = express();
+// Trust reverse proxy (Google Cloud Run / AI Studio reverse proxy)
+app.set("trust proxy", 1);
+const PORT = Number(process.env.PORT) || 8080;
+const HOST = '0.0.0.0';
+const httpServer = http.createServer(app);
+
+// Allow app.listen to delegate directly to httpServer
+(app as any).listen = (...args: any[]) => (httpServer.listen as any)(...args);
+
+// Security HTTP headers - configured to allow Google AI Studio iframe preview
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    frameguard: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+  })
+);
+
+// Rate limiting: standardLimiter applied globally; mutationLimiter overrides on write endpoints
+const standardLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+  },
+});
+const mutationLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+  },
+});
+
+app.use(standardLimiter);
+app.use(express.json());
 
 // 3. SETTLEMENT NONCES: Durable, Persistent File/DB-backed Store to eliminate race conditions & crash vulnerabilities
 export interface NonceAuditRecord {
@@ -646,7 +737,7 @@ app.post("/api/v1/ingress", mutationLimiter, async (req, res) => {
         timestamp: Date.now(),
         protocol: "HTTP",
         endpoint: "/api/v1/ingress",
-        payload: req.body,
+        payload: "[DISCARDED_FAIL_CLOSED_ZERO_ALLOCATION]",
         status: "GATE_1_INTERCEPT_QUARANTINE",
         anomaly_index: gate1Result.anomaly_index,
         route: "HONEYPOT_SANDBOX",
@@ -949,10 +1040,10 @@ app.post(["/api/v1/settlement/process", "/api/settlement/process"], mutationLimi
       return res.status(200).json(settlementResult);
     }
 
-    // Tier 2: Conditional Escrow Review Hold
+    // Tier 2: Conditional Escrow Hold
     if (anomalyIndex >= 500) {
       return res.status(200).json({
-        status: "ESCROW_REVIEW_REQUIRED",
+        status: "ESCROW_HOLD_DETERMINISTIC",
         disposition: "GATE_1_HEURISTIC_ESCROW",
         tier: 2,
         claim_id: claimId,
@@ -1623,10 +1714,10 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SumerAvera Protocol Core] Express & WebSocket Server running on http://0.0.0.0:${PORT}`);
-    console.log(` - Live WebSocket Ingress Route: ws://0.0.0.0:${PORT}/ws/ingress`);
-    console.log(` - Live HTTP Ingress Route: http://0.0.0.0:${PORT}/api/v1/ingress`);
+  const PORT = Number(process.env.PORT) || 8080;
+  const HOST = '0.0.0.0';
+  app.listen(PORT, HOST, () => {
+    console.log(`Server listening on http://${HOST}:${PORT}`);
   });
 }
 

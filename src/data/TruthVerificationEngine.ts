@@ -252,7 +252,9 @@ export class Block {
  */
 export class TruthVerificationEngine {
   public chain: Block[] = [];
+  // Zero memory queue allocation: quarantine buffer eliminated. Payloads are discarded immediately.
   public quarantine_zone: IsolatedEntry[] = [];
+  public quarantined_count: number = 0;
   public step_counter: number = 0;
   public gain_share_rate: number;
   public total_fees_extracted: number = 0.0;
@@ -276,7 +278,7 @@ export class TruthVerificationEngine {
 
   /**
    * Gate 1 Processing: Inspects incoming payloads. Validates clean transactions to ledger;
-   * quarantines fraud attempts and extracts real-time gain-share fee immediately.
+   * unverified/fraudulent attempts fail-closed and are discarded immediately with zero queue allocation.
    */
   public process_ingress_payload(payload: IngressPayload): [boolean, Gate1ProcessingResult] {
     this.step_counter += 1;
@@ -285,15 +287,9 @@ export class TruthVerificationEngine {
     const is_anomalous = (payload.risk_score !== undefined && payload.risk_score > 0.85) || Boolean(payload.flagged_fraud);
 
     if (is_anomalous) {
-      // 1. Isolate payload in quarantine zone (0% state cross-bleed)
+      // 1. Fail-closed immediately: Discard payload with zero disk/memory queue allocation
       const prevented_val = payload.claimed_value || 0.0;
-      const isolated_entry: IsolatedEntry = {
-        step: this.step_counter,
-        payload_id: payload.payload_id,
-        prevented_loss_value: prevented_val,
-        timestamp: Date.now() / 1000
-      };
-      this.quarantine_zone.push(isolated_entry);
+      this.quarantined_count += 1;
 
       // 2. Extract real-time gain-share fee at instant of authentication
       const fee_extracted = prevented_val * this.gain_share_rate;
@@ -340,7 +336,7 @@ export class TruthVerificationEngine {
     return {
       current_step: this.step_counter,
       secure_blocks: this.chain.length,
-      quarantined_payloads: this.quarantine_zone.length,
+      quarantined_payloads: this.quarantined_count,
       isolation_integrity: "100.0%",
       overall_error_density: "0.000%",
       accumulated_gain_share_capital: Number(this.total_fees_extracted.toFixed(2)),

@@ -12,21 +12,22 @@ VARIABLES
     step_count,          \\* Execution step counter (T)
     blocks,              \\* Immutable audit ledger state
     ingress_queue,       \\* Incoming raw payload queue
-    quarantine_zone,      \\* Isolated fraud/anomalous payloads
+    quarantined_count,   \\* Discarded unverified/anomalous payload counter (zero memory allocation)
     gain_share_extracted \\* Accumulated real-time fee extraction counter
 
-vars == <<step_count, blocks, ingress_queue, quarantine_zone, gain_share_extracted>>
+vars == <<step_count, blocks, ingress_queue, quarantined_count, gain_share_extracted>>
 
 \\* Type and Boundary Invariant
 TypeOK ==
     /\\ step_count \\in 0..MaxSteps
     /\\ Len(blocks) \\in 1..MaxBlocks
+    /\\ quarantined_count \\in Nat
     /\\ gain_share_extracted \\in Nat
 
 \\* Core Safety Invariant: Inv_Ledger
-\\* Guarantees absolute isolation of Gate 1 payloads and state monotonicity
+\\* Guarantees absolute isolation of Gate 1 payloads and state monotonicity with zero memory allocation
 Inv_Ledger ==
-    /\\ Len(quarantine_zone) >= 0
+    /\\ quarantined_count >= 0
     /\\ Len(blocks) > 0 => blocks[1].hash /= ""
     /\\ step_count >= 0
 
@@ -36,7 +37,7 @@ Init ==
     /\\ blocks = << [id |-> 1, hash |-> "GENESIS_SHA256", prev |-> "0000"] >>
     /\\ ingress_queue = << [payload_id |-> 101, is_valid |-> TRUE, loss_value |-> 1000],
                           [payload_id |-> 102, is_valid |-> FALSE, loss_value |-> 5000] >>
-    /\\ quarantine_zone = << >>
+    /\\ quarantined_count = 0
     /\\ gain_share_extracted = 0
 
 \\* Action: Process Payload through Gate 1 Ingress Isolation
@@ -46,11 +47,11 @@ ProcessGate1Ingress ==
        IN IF payload.is_valid THEN
              \\* Valid payload commits to SHA-256 Immutable Ledger
              /\\ blocks' = Append(blocks, [id |-> Len(blocks) + 1, hash |-> "VALID_SHA256", prev |-> blocks[Len(blocks)].hash])
-             /\\ quarantine_zone' = quarantine_zone
+             /\\ quarantined_count' = quarantined_count
              /\\ gain_share_extracted' = gain_share_extracted
           ELSE
-             \\* Anomalous payload isolated at Gate 1; real-time gain-share fee extracted instantly
-             /\\ quarantine_zone' = Append(quarantine_zone, payload)
+             \\* Anomalous payload fails closed and is discarded immediately with zero memory queue allocation
+             /\\ quarantined_count' = quarantined_count + 1
              /\\ blocks' = blocks
              /\\ gain_share_extracted' = gain_share_extracted + (payload.loss_value * 5 / 100)
     /\\ ingress_queue' = Tail(ingress_queue)
@@ -293,6 +294,7 @@ export interface TlaState {
   step_count: number;
   blocks: Array<{ id: number; hash: string; prev: string }>;
   ingress_queue: Array<{ payload_id: number; is_valid: boolean; loss_value: number }>;
+  quarantined_count?: number;
   quarantine_zone: Array<{ payload_id: number; is_valid: boolean; loss_value: number }>;
   gain_share_extracted: number;
   truthAnchor?: string;
@@ -308,15 +310,17 @@ export interface InvariantResult {
 }
 
 export function evaluateInvariants(state: TlaState, maxSteps = 2222, maxBlocks = 2222): InvariantResult {
+  const qCount = state.quarantined_count ?? state.quarantine_zone?.length ?? 0;
   const TypeOK = 
     state.step_count >= 0 &&
     state.step_count <= maxSteps &&
     state.blocks.length >= 1 &&
     state.blocks.length <= maxBlocks &&
+    qCount >= 0 &&
     state.gain_share_extracted >= 0;
 
   const Inv_Ledger = 
-    state.quarantine_zone.length >= 0 &&
+    qCount >= 0 &&
     (state.blocks.length === 0 || state.blocks[0].hash !== "") &&
     state.step_count >= 0;
 
@@ -324,7 +328,7 @@ export function evaluateInvariants(state: TlaState, maxSteps = 2222, maxBlocks =
   const nodeHashes = state.nodeStateHashes || { "NODE-01": anchor, "NODE-02": anchor, "EDGE-01": anchor };
   const UnifiedTruthInvariant = Object.values(nodeHashes).every(h => h === anchor || h.includes(anchor) || h !== "");
 
-  const isolation_maintained = state.quarantine_zone.every(p => !p.is_valid);
+  const isolation_maintained = (state.quarantine_zone ? state.quarantine_zone.every(p => !p.is_valid) : true) && qCount >= 0;
   const monotonic_steps = state.step_count >= 0;
 
   return {

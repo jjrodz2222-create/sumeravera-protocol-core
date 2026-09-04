@@ -87,13 +87,10 @@ class SumeraVeraIngressEngine:
                 "step": self.step_counter,
                 "timestamp": time.time(),
                 "status": "GATE_1_INTERCEPT",
-                "action": "Isolated into Honeypot Sandbox. Zero state contamination (Delta S = 0).",
-                "payload": payload,
+                "action": "Fail-closed discard. Zero memory queue allocation (Delta S = 0).",
+                "payload": "[DISCARDED_FAIL_CLOSED_ZERO_ALLOCATION]",
                 "state_bleed": 0.00
             }
-            self.honeypot_storage.append(quarantine_record)
-            if len(self.honeypot_storage) > 1000:
-                self.honeypot_storage = self.honeypot_storage[-1000:]
             return quarantine_record
 
         # Deterministic State Hashing & Ledger Commitment
@@ -147,13 +144,10 @@ class SumeraVeraPCInsuranceEngine:
                 "step": self.step_counter,
                 "timestamp": time.time(),
                 "status": "GATE_1_INTERCEPT",
-                "action": "Isolated into Honeypot Sandbox. Zero state contamination (Delta S = 0). 100% Capital Preserved.",
-                "claim_packet": claim_packet,
+                "action": "Fail-closed discard. Zero memory queue allocation (Delta S = 0). 100% Capital Preserved.",
+                "claim_packet": "[DISCARDED_FAIL_CLOSED_ZERO_ALLOCATION]",
                 "state_bleed": 0.00
             }
-            self.honeypot_storage.append(quarantine_record)
-            if len(self.honeypot_storage) > 1000:
-                self.honeypot_storage = self.honeypot_storage[-1000:]
             return quarantine_record
 
         # Deterministic State Hashing & Ledger Commitment for Valid Claims
@@ -447,18 +441,8 @@ class Gate1IngressValidator:
                 "state_bleed": 0.00
             }
 
-            self.isolation_logs.insert(0, {
-                "id": f"ISO-{int(now * 1000)}-{random.randint(100, 999)}",
-                "timestamp": now,
-                "agent_id": agent_id,
-                "anomaly_index": anomaly_index,
-                "prevented_loss": prevented_loss,
-                "computed_sha256": computed_sha256,
-                "reasons": reasons,
-                "state_bleed": 0.00
-            })
-            if len(self.isolation_logs) > 100:
-                self.isolation_logs.pop()
+            # Fail-closed: Payload is discarded immediately with zero queue/buffer allocation
+            self.isolation_logs = []
 
         t_end = time.perf_counter()
         latency_ms = (t_end - t_start) * 1000.0
