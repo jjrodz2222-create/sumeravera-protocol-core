@@ -709,11 +709,19 @@ const httpServer = http.createServer(app);
 // Allow app.listen to delegate directly to httpServer
 (app as any).listen = (...args: any[]) => (httpServer.listen as any)(...args);
 
-// Security HTTP headers - configured to allow Google AI Studio iframe preview
+const isLocalDevelopment = process.env.NODE_ENV === "development";
+const defaultContentSecurityPolicyDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
+
+// Security HTTP headers
 app.use(
   helmet({
-    contentSecurityPolicy: false,
-    frameguard: false,
+    contentSecurityPolicy: {
+      directives: {
+        ...defaultContentSecurityPolicyDirectives,
+        connectSrc: [...(defaultContentSecurityPolicyDirectives.connectSrc ?? ["'self'"]), "ws:", "wss:"],
+        upgradeInsecureRequests: isLocalDevelopment ? null : [],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false,
