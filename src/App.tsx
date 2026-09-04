@@ -330,8 +330,6 @@ export default function App() {
           <button
             id="tab-fraud-metrics-btn"
             onClick={() => setActiveTab("fraud")}
-            role="tab"
-            aria-selected={activeTab === "fraud"}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
               activeTab === "fraud"
                 ? "bg-amber-950 text-amber-300 border border-amber-800 shadow-md shadow-amber-950/50"
