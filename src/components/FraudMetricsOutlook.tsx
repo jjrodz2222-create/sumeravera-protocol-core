@@ -69,16 +69,21 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
     []
   );
 
-  const futureEstimateData = useMemo(
-    () => [
-      { year: "2026", fraudPressureIndex: 100, currentTechLeakage: 33, sumerAveraLeakage: Number((100 - modeledContainmentAnchor).toFixed(1)), preventedLossM: Number((liveFraudSignals.preventedLoss / 1000000).toFixed(2)) },
-      { year: "2027", fraudPressureIndex: 111, currentTechLeakage: 35, sumerAveraLeakage: 2.4, preventedLossM: 1.8 },
-      { year: "2028", fraudPressureIndex: 123, currentTechLeakage: 37, sumerAveraLeakage: 2.2, preventedLossM: 3.2 },
-      { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: 2.0, preventedLossM: 4.9 },
-      { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: 1.8, preventedLossM: 6.7 },
-    ],
-    [liveFraudSignals.preventedLoss, modeledContainmentAnchor]
-  );
+  const futureEstimateData = useMemo(() => {
+    const projections = [
+      { year: "2026", fraudPressureIndex: 100, currentTechLeakage: 33, sumerAveraLeakage: Number((100 - modeledContainmentAnchor).toFixed(1)) },
+      { year: "2027", fraudPressureIndex: 111, currentTechLeakage: 35, sumerAveraLeakage: 2.4 },
+      { year: "2028", fraudPressureIndex: 123, currentTechLeakage: 37, sumerAveraLeakage: 2.2 },
+      { year: "2029", fraudPressureIndex: 136, currentTechLeakage: 39, sumerAveraLeakage: 2.0 },
+      { year: "2030", fraudPressureIndex: 150, currentTechLeakage: 42, sumerAveraLeakage: 1.8 },
+    ];
+    const baselinePreventedLossM = Math.max(liveFraudSignals.preventedLoss / 1000000, 0.1);
+
+    return projections.map((entry, index) => ({
+      ...entry,
+      preventedLossM: Number((baselinePreventedLossM * (entry.fraudPressureIndex / 100) * (1 + index * 0.06)).toFixed(2)),
+    }));
+  }, [liveFraudSignals.preventedLoss, modeledContainmentAnchor]);
 
   const theme = {
     grid: "#1e293b",
@@ -191,6 +196,7 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
         <div className="mb-4">
           <h2 className="text-base font-bold text-slate-100">2026–2030 Future Estimate</h2>
           <p className="text-xs text-slate-400">Modeled leakage stays materially lower under SumerAvera while prevented-loss capacity scales with rising fraud pressure.</p>
+          <p className="text-[11px] text-slate-500 mt-1">2027–2030 prevented-loss values are modeled estimates derived from the 2026 live baseline and projected fraud-pressure growth.</p>
         </div>
         <div className="h-[22rem]">
           <ResponsiveContainer width="100%" height="100%">
