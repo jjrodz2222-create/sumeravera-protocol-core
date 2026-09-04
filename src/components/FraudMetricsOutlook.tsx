@@ -95,14 +95,16 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
       preventedLossM:
         baselinePreventedLossM === null
           ? null
-          : Number(
-              (
-                baselinePreventedLossM *
-                (entry.fraudPressureIndex / 100) *
-                (baselineContainment > 0 ? (100 - entry.sumerAveraLeakage) / baselineContainment : 1) *
-                (1 + index * 0.03)
-              ).toFixed(2)
-            ),
+          : index === 0
+            ? Number(baselinePreventedLossM.toFixed(2))
+            : Number(
+                (
+                  baselinePreventedLossM *
+                  (entry.fraudPressureIndex / 100) *
+                  (baselineContainment > 0 ? (100 - entry.sumerAveraLeakage) / baselineContainment : 1) *
+                  (1 + index * 0.03)
+                ).toFixed(2)
+              ),
     }));
   }, [liveFraudSignals.hasLivePreventedLossTelemetry, liveFraudSignals.preventedLoss, modeledContainmentAnchor]);
 
@@ -246,16 +248,22 @@ export const FraudMetricsOutlook: React.FC<FraudMetricsOutlookProps> = ({ gatewa
           </ResponsiveContainer>
         </div>
         <div className="mt-6 h-52">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={futureEstimateData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
-              <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Legend wrapperStyle={{ fontSize: "12px" }} />
-              <Bar dataKey="preventedLossM" name="Prevented loss ($M)" fill="#eab308" radius={[6, 6, 0, 0]} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          {liveFraudSignals.hasLivePreventedLossTelemetry ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={futureEstimateData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" />
+                <XAxis dataKey="year" stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} />
+                <YAxis stroke={theme.axis} tick={{ fill: theme.axis, fontSize: 11 }} label={{ value: "Prevented loss ($M)", angle: -90, position: "insideLeft", fill: theme.axis, fontSize: 11 }} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: "12px" }} />
+                <Bar dataKey="preventedLossM" name="Prevented loss ($M)" fill="#eab308" radius={[6, 6, 0, 0]} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-950 text-xs text-slate-500">
+              Prevented-loss forecast unlocks when live prevented-loss telemetry is available.
+            </div>
+          )}
         </div>
       </div>
     </div>
